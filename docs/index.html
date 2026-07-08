@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Tank Assault 3D — دبابة الصحراء</title>
+<style>
+  /* ===================== إعدادات عامة ===================== */
+  *{ margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ width:100%; height:100%; overflow:hidden; background:#0a0d12; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,sans-serif; user-select:none; }
+  #app{ position:fixed; inset:0; }
+  canvas{ display:block; touch-action:none; }
+
+  /* ===================== HUD علوي ===================== */
+  .hud{ position:absolute; inset:0; pointer-events:none; z-index:10; }
+
+  .hud-top{
+    position:absolute; top:0; left:0; right:0;
+    display:flex; justify-content:space-between; align-items:flex-start;
+    padding:calc(env(safe-area-inset-top) + 46px) 14px 0;
+    gap:10px;
+  }
+
+  .glass{
+    background:rgba(20,26,18,0.42);
+    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+    border:1px solid rgba(255,255,255,0.14);
+    border-radius:14px;
+    box-shadow:0 6px 20px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
+  }
+
+  .panel-left{ padding:10px 12px; min-width:160px; }
+  .hpbar-label{ font-size:10px; letter-spacing:.12em; color:#9aa08c; margin-bottom:4px; font-weight:700; }
+  .hpbar{ height:10px; border-radius:6px; background:rgba(0,0,0,.5); overflow:hidden; border:1px solid rgba(255,255,255,.1); }
+  .hpbar > i{ display:block; height:100%; width:100%; border-radius:5px; background:linear-gradient(90deg,#4f8f26,#8ecb45); transition:width .15s ease; }
+  .fuel-label{ margin-top:8px; }
+  .fuelbar > i{ background:linear-gradient(90deg,#b3790f,#ffb020); }
+
+  .panel-right{ padding:10px 14px; text-align:left; }
+  .score-big{ font-size:22px; font-weight:800; color:#f0eddf; font-variant-numeric:tabular-nums; line-height:1; }
+  .score-sub{ font-size:11px; color:#ffb020; margin-top:3px; font-variant-numeric:tabular-nums; }
+
+  .stage-pill{
+    position:absolute; top:calc(env(safe-area-inset-top) + 14px); left:50%; transform:translateX(-50%);
+    padding:5px 16px; font-size:11px; letter-spacing:.1em; font-weight:700; color:#e8e6d9;
+    display:flex; gap:10px; align-items:center;
+  }
+  .stage-pill b{ color:#ffb020; }
+
+  .damage-flash{
+    position:absolute; inset:0; background:radial-gradient(ellipse at center, transparent 40%, rgba(220,40,30,0.55) 100%);
+    opacity:0; pointer-events:none; transition:opacity .08s ease; z-index:9;
+  }
+
+  .mute-btn{
+    position:absolute; top:calc(env(safe-area-inset-top) + 140px); right:14px;
+    width:40px; height:40px; border-radius:12px; pointer-events:auto;
+    display:flex; align-items:center; justify-content:center; font-size:18px; color:#e8e6d9;
+    cursor:pointer;
+  }
+
+  /* ===================== أزرار التحكم ===================== */
+  .controls{ position:absolute; inset:0; z-index:11; pointer-events:none; }
+
+  .pad-move{
+    position:absolute; left:16px; bottom:calc(env(safe-area-inset-bottom) + 20px);
+    display:flex; gap:12px;
+  }
+  .pad-aim{
+    position:absolute; left:190px; bottom:calc(env(safe-area-inset-bottom) + 20px);
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .pad-actions{
+    position:absolute; right:16px; bottom:calc(env(safe-area-inset-bottom) + 20px);
+    display:flex; align-items:flex-end; gap:12px;
+  }
+
+  .tbtn{
+    pointer-events:auto; cursor:pointer;
+    width:60px; height:60px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:22px; font-weight:800; color:#e8e6d9;
+    background:rgba(20,26,18,0.42);
+    backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,0.16);
+    box-shadow:0 4px 14px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
+    transition:transform .07s ease, filter .07s ease;
+    -webkit-user-select:none; user-select:none;
+  }
+  .tbtn:active, .tbtn.on{ transform:scale(.9); filter:brightness(1.35); }
+
+  .btn-fire{
+    width:82px; height:82px; font-size:14px; letter-spacing:.05em;
+    background:radial-gradient(circle at 35% 30%, #ff7a1a, #b3390f 78%);
+    border-color:#7a2508; box-shadow:0 6px 20px rgba(230,72,58,0.4);
+  }
+  .btn-jump{
+    width:56px; height:56px; font-size:12px;
+    background:radial-gradient(circle at 35% 30%, #4a6ea8, #223354 78%);
+    border-color:#16233d;
+  }
+  .btn-aim{ width:54px; height:54px; font-size:20px; }
+
+  /* ===================== الشاشات ===================== */
+  .screen{
+    position:absolute; inset:0; z-index:20;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:18px; padding:30px; text-align:center;
+    background:rgba(6,9,6,0.72);
+    backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+  }
+  .screen.hidden{ display:none; }
+
+  .screen .card{
+    max-width:360px; width:100%;
+    padding:28px 24px;
+    display:flex; flex-direction:column; align-items:center; gap:14px;
+  }
+  .title{
+    font-family:"Arial Narrow",Arial,sans-serif; font-weight:900;
+    font-size:34px; letter-spacing:.04em; color:#f0eddf; line-height:1;
+    text-shadow:0 2px 0 #000, 0 0 26px rgba(255,176,32,.3);
+  }
+  .title.win{ color:#8ecb45; }
+  .title.lose{ color:#e6483a; }
+  .subtitle{ font-size:13px; color:#9aa08c; line-height:1.6; }
+  .stats-line{ font-size:14px; color:#e8e6d9; font-variant-numeric:tabular-nums; }
+  .stats-line b{ color:#ffb020; }
+
+  .big-btn{
+    pointer-events:auto; cursor:pointer;
+    margin-top:6px; padding:15px 34px; border:none; border-radius:12px;
+    font-family:"Arial Narrow",Arial,sans-serif; font-weight:800; font-size:17px; letter-spacing:.05em;
+    color:#161a10; background:linear-gradient(180deg,#ffc23e,#f0a010);
+    box-shadow:0 8px 22px rgba(255,176,32,0.35);
+  }
+  .big-btn:active{ transform:scale(.96); }
+
+  .upgrades{ display:flex; flex-direction:column; gap:10px; width:100%; margin-top:4px; }
+  .upg-row{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:10px 14px; pointer-events:auto; cursor:pointer;
+  }
+  .upg-row .u-name{ font-size:13px; color:#e8e6d9; font-weight:700; text-align:right; }
+  .upg-row .u-lvl{ font-size:11px; color:#9aa08c; }
+  .upg-row .u-cost{ font-size:13px; color:#ffb020; font-weight:800; white-space:nowrap; }
+  .upg-row.disabled{ opacity:.45; }
+
+  .hint{ font-size:11px; color:#6d7460; margin-top:8px; line-height:1.7; }
+
+  .loading{ color:#9aa08c; font-size:14px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<!-- ===================== HUD ===================== -->
+<div class="hud">
+  <div class="stage-pill glass">المرحلة <b id="stageNum">1</b><span>·</span>الأعداء <b id="enemyCount">0</b></div>
+
+  <div class="hud-top">
+    <div class="panel-left glass">
+      <div class="hpbar-label">الدرع / الصحة</div>
+      <div class="hpbar"><i id="hpFill"></i></div>
+      <div class="hpbar-label fuel-label">الوقود</div>
+      <div class="hpbar fuelbar"><i id="fuelFill"></i></div>
+    </div>
+    <div class="panel-right glass">
+      <div class="score-big" id="scoreVal">0</div>
+      <div class="score-sub">◆ <span id="coinVal">0</span></div>
+    </div>
+  </div>
+
+  <div class="mute-btn glass" id="muteBtn">🔊</div>
+</div>
+
+<div class="damage-flash" id="dmgFlash"></div>
+
+<!-- ===================== أزرار اللمس ===================== -->
+<div class="controls">
+  <div class="pad-move">
+    <div class="tbtn" id="btnLeft">◀</div>
+    <div class="tbtn" id="btnRight">▶</div>
+  </div>
+  <div class="pad-aim">
+    <div class="tbtn btn-aim" id="btnAimUp">▲</div>
+    <div class="tbtn btn-aim" id="btnAimDown">▼</div>
+  </div>
+  <div class="pad-actions">
+    <div class="tbtn btn-jump" id="btnJump">قفز</div>
+    <div class="tbtn btn-fire" id="btnFire">إطلاق</div>
+  </div>
+</div>
+
+<!-- ===================== شاشة البداية ===================== -->
+<div class="screen" id="startScreen">
+  <div class="card glass">
+    <div class="title">دبابة الصحراء</div>
+    <div class="subtitle">لعبة حرب دبابات ثلاثية الأبعاد بمنظور جانبي.<br>تحرّك، صوّب المدفع، ودمّر كل الأعداء لتصل إلى الزعيم.</div>
+    <div class="loading" id="loadingText">جارٍ تحميل المحرّك ثلاثي الأبعاد…</div>
+    <button class="big-btn" id="startBtn" style="display:none">ابدأ المعركة</button>
+    <div class="hint">
+      لمس: أزرار الحركة والتصويب والإطلاق على الشاشة.<br>
+      كيبورد: ← → للحركة · ↑ ↓ لزاوية المدفع · مسافة للإطلاق · S للقفز.
+    </div>
+  </div>
+</div>
+
+<!-- ===================== شاشة نهاية اللعبة ===================== -->
+<div class="screen hidden" id="gameOverScreen">
+  <div class="card glass">
+    <div class="title lose">دُمّرت الدبابة</div>
+    <div class="stats-line">النتيجة <b id="goScore">0</b> · المرحلة <b id="goStage">1</b></div>
+    <button class="big-btn" id="retryBtn">إعادة المحاولة</button>
+  </div>
+</div>
+
+<!-- ===================== شاشة الانتصار / التطوير ===================== -->
+<div class="screen hidden" id="victoryScreen">
+  <div class="card glass">
+    <div class="title win">تمّ تطهير المرحلة</div>
+    <div class="stats-line">النتيجة <b id="vicScore">0</b> · العملة ◆ <b id="vicCoins">0</b></div>
+    <div class="subtitle">طوّر دبابتك قبل المرحلة التالية:</div>
+    <div class="upgrades" id="upgradeList"></div>
+    <button class="big-btn" id="nextStageBtn">المرحلة التالية ▶</button>
+  </div>
+</div>
+
+<!-- ===================== Three.js من CDN ===================== -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* =====================================================================
+   Tank Assault 3D — لعبة حرب دبابات بمنظور جانبي (Three.js)
+   ملف واحد، بدون خطوات بناء، جاهز لـ GitHub Pages والموبايل.
+   ===================================================================== */
+(function(){
+"use strict";
+
+if(typeof THREE === 'undefined'){
+  document.getElementById('loadingText').textContent = 'تعذّر تحميل Three.js — تحقق من الاتصال بالإنترنت.';
+  return;
+}
+
+/* ------------------------------------------------------------------ *
+ *  1) إعداد المشهد والكاميرا والعارض (Renderer)
+ * ------------------------------------------------------------------ */
+var app = document.getElementById('app');
+var scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0xc9a56a, 60, 240); // ضباب صحراوي يعطي عمقاً
+
+var renderer = new THREE.WebGLRenderer({ antialias:true, powerPreference:'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); // تحديد الدقة للأداء على الموبايل
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputEncoding = THREE.sRGBEncoding;
+app.appendChild(renderer.domElement);
+
+// كاميرا Perspective بزاوية جانبية ثابتة (2.5D)
+var camera = new THREE.PerspectiveCamera(45, 1, 0.1, 600);
+var CAM_OFFSET = new THREE.Vector3(0, 9, 30); // إزاحة الكاميرا خلف/فوق الدبابة
+var camShake = 0; // شدة اهتزاز الكاميرا
+
+// خلفية سماء متدرجة (غروب) عبر تكستشر مرسوم على canvas
+function makeSkyTexture(){
+  var c = document.createElement('canvas'); c.width = 16; c.height = 256;
+  var g = c.getContext('2d').createLinearGradient(0,0,0,256);
+  g.addColorStop(0.0, '#2a3d63');
+  g.addColorStop(0.45,'#7d6f84');
+  g.addColorStop(0.72,'#e08a4e');
+  g.addColorStop(1.0, '#f4c67a');
+  var ctx = c.getContext('2d'); ctx.fillStyle = g; ctx.fillRect(0,0,16,256);
+  var t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t;
+}
+scene.background = makeSkyTexture();
+
+/* ------------------------------------------------------------------ *
+ *  2) الإضاءة + الظلال
+ * ------------------------------------------------------------------ */
+var sun = new THREE.DirectionalLight(0xffe6bd, 1.35); // شمس دافئة
+sun.position.set(-40, 60, 30);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.camera.near = 1; sun.shadow.camera.far = 200;
+sun.shadow.camera.left = -60; sun.shadow.camera.right = 60;
+sun.shadow.camera.top = 60; sun.shadow.camera.bottom = -60;
+sun.shadow.bias = -0.0004;
+scene.add(sun);
+scene.add(new THREE.AmbientLight(0x88663f, 0.75)); // إضاءة محيطة ملوّنة
+var hemi = new THREE.HemisphereLight(0xffd9a0, 0x6b4a24, 0.5);
+scene.add(hemi);
+
+/* ------------------------------------------------------------------ *
+ *  3) الأرضية الصحراوية بتضاريس (كثبان) + خلفية طبقات
+ * ------------------------------------------------------------------ */
+var GROUND_LEN = 1200;
+var groundGeo = new THREE.PlaneGeometry(GROUND_LEN, 120, 200, 12);
+groundGeo.rotateX(-Math.PI/2);
+// إزاحة الرؤوس لعمل كثبان رملية ناعمة
+(function(){
+  var pos = groundGeo.attributes.position;
+  for(var i=0;i<pos.count;i++){
+    var x = pos.getX(i), z = pos.getZ(i);
+    var h = Math.sin(x*0.05)*0.8 + Math.sin(x*0.013 + 1.7)*1.6 + Math.cos(z*0.08)*0.5;
+    pos.setY(i, h);
+  }
+  groundGeo.computeVertexNormals();
+})();
+var groundMat = new THREE.MeshStandardMaterial({ color:0xcaa76a, roughness:1.0, metalness:0.0, flatShading:false });
+var ground = new THREE.Mesh(groundGeo, groundMat);
+ground.receiveShadow = true;
+scene.add(ground);
+function groundHeightAt(x){ // ارتفاع الأرض التقريبي عند إحداثي x (لوضع الدبابات)
+  return Math.sin(x*0.05)*0.8 + Math.sin(x*0.013 + 1.7)*1.6;
+}
+
+// جبال خلفية (silhouette) للـ Parallax — مجموعة تتبع الكاميرا أفقياً
+var bgGroup = new THREE.Group(); scene.add(bgGroup);
+function addMountainLayer(zDist, color, count, scale, yBase){
+  var mat = new THREE.MeshBasicMaterial({ color:color, fog:false });
+  for(var i=0;i<count;i++){
+    var geo = new THREE.ConeGeometry(scale*(0.7+Math.random()*0.6), scale*(1.2+Math.random()), 4);
+    var m = new THREE.Mesh(geo, mat);
+    m.position.set((i - count/2)*scale*1.4 + (Math.random()-0.5)*scale, yBase, zDist);
+    m.rotation.y = Math.PI/4;
+    bgGroup.add(m);
+  }
+}
+addMountainLayer(-140, 0x6a5a7a, 20, 26, 6);
+addMountainLayer(-95,  0x8a6a5a, 22, 18, 2);
+
+// غيوم تنجرف (billboards)
+function makeCloudTexture(){
+  var c = document.createElement('canvas'); c.width=128; c.height=64;
+  var ctx = c.getContext('2d');
+  ctx.fillStyle='rgba(255,240,220,0.9)';
+  for(var i=0;i<10;i++){ ctx.beginPath(); ctx.arc(20+Math.random()*88, 32+(Math.random()-0.5)*18, 12+Math.random()*14, 0, Math.PI*2); ctx.fill(); }
+  var t = new THREE.CanvasTexture(c); return t;
+}
+var cloudTex = makeCloudTexture();
+var clouds = [];
+for(var ci=0; ci<8; ci++){
+  var sp = new THREE.Sprite(new THREE.SpriteMaterial({ map:cloudTex, transparent:true, opacity:0.75, fog:false }));
+  sp.scale.set(34, 15, 1);
+  sp.position.set((Math.random()-0.5)*400, 26+Math.random()*16, -80 - Math.random()*40);
+  scene.add(sp); clouds.push(sp);
+}
+
+/* ------------------------------------------------------------------ *
+ *  4) بناء نموذج دبابة (بدنة + برج دوّار + ماسورة مدفع + عجلات)
+ * ------------------------------------------------------------------ */
+function buildTank(opts){
+  opts = opts || {};
+  var bodyColor = opts.body || 0x5a7a3a;
+  var turretColor = opts.turret || 0x3d5427;
+  var scale = opts.scale || 1;
+
+  var tank = new THREE.Group();
+
+  var metal = { roughness:0.55, metalness:0.65 };
+
+  // البدنة (Hull)
+  var hull = new THREE.Mesh(
+    new THREE.BoxGeometry(4.2*scale, 1.3*scale, 2.4*scale),
+    new THREE.MeshStandardMaterial(Object.assign({ color:bodyColor }, metal))
+  );
+  hull.position.y = 1.0*scale; hull.castShadow = true; hull.receiveShadow = true;
+  tank.add(hull);
+
+  // جوانب الجنزير
+  var trackMat = new THREE.MeshStandardMaterial({ color:0x1a1a1a, roughness:0.9, metalness:0.2 });
+  [-1,1].forEach(function(s){
+    var track = new THREE.Mesh(new THREE.BoxGeometry(4.6*scale, 0.9*scale, 0.6*scale), trackMat);
+    track.position.set(0, 0.5*scale, s*1.15*scale); track.castShadow = true;
+    tank.add(track);
+  });
+
+  // العجلات (تدور أثناء الحركة)
+  var wheels = [];
+  var wheelGeo = new THREE.CylinderGeometry(0.5*scale, 0.5*scale, 0.3*scale, 12);
+  wheelGeo.rotateX(Math.PI/2);
+  var wheelMat = new THREE.MeshStandardMaterial({ color:0x2a2a2a, roughness:0.8, metalness:0.3 });
+  [-1.5,-0.5,0.5,1.5].forEach(function(wx){
+    [-1,1].forEach(function(s){
+      var w = new THREE.Mesh(wheelGeo, wheelMat);
+      w.position.set(wx*scale, 0.5*scale, s*1.15*scale); w.castShadow = true;
+      tank.add(w); wheels.push(w);
+    });
+  });
+
+  // البرج الدوّار (Turret)
+  var turret = new THREE.Group();
+  turret.position.y = 1.75*scale;
+  var turretMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.15*scale, 1.35*scale, 1.0*scale, 16),
+    new THREE.MeshStandardMaterial(Object.assign({ color:turretColor }, metal))
+  );
+  turretMesh.castShadow = true;
+  turret.add(turretMesh);
+
+  // محور الماسورة (يميل عمودياً حسب زاوية التصويب)
+  var barrelPivot = new THREE.Group();
+  barrelPivot.position.set(0.9*scale, 0.1*scale, 0);
+  var barrel = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.22*scale, 0.26*scale, 3.0*scale, 12),
+    new THREE.MeshStandardMaterial({ color:0x2c2c2c, roughness:0.5, metalness:0.8 })
+  );
+  barrel.rotation.z = -Math.PI/2;      // توجيه الماسورة أفقياً
+  barrel.position.x = 1.5*scale;       // دفعها للأمام من المحور
+  barrel.castShadow = true;
+  barrelPivot.add(barrel);
+  turret.add(barrelPivot);
+  tank.add(turret);
+
+  // فوهة الماسورة (نقطة خروج القذيفة والوميض)
+  var muzzle = new THREE.Object3D();
+  muzzle.position.set(3.0*scale, 0, 0);
+  barrelPivot.add(muzzle);
+
+  tank.userData = { turret:turret, barrelPivot:barrelPivot, muzzle:muzzle, wheels:wheels, scale:scale };
+  return tank;
+}
+
+// شريط صحة ثلاثي الأبعاد يطفو فوق الوحدة
+function makeHealthBar(){
+  var g = new THREE.Group();
+  var bg = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 0.4), new THREE.MeshBasicMaterial({ color:0x000000, transparent:true, opacity:0.5, depthTest:false }));
+  var fg = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 0.26), new THREE.MeshBasicMaterial({ color:0xff5a4a, depthTest:false }));
+  fg.position.z = 0.01; fg.renderOrder = 999; bg.renderOrder = 998;
+  g.add(bg); g.add(fg);
+  g.userData.fg = fg;
+  return g;
+}
+
+/* ------------------------------------------------------------------ *
+ *  5) نظام الجزيئات (Particles): انفجار، دخان، غبار، وميض
+ * ------------------------------------------------------------------ */
+var particles = []; // {mesh, vx,vy,vz, life, maxLife, kind, spin}
+var partGeo = new THREE.PlaneGeometry(1,1);
+// تكستشر ناعم (توهج دائري) للجزيئات بدل المربع الحاد
+var softParticleTex = (function(){
+  var c = document.createElement('canvas'); c.width=64; c.height=64;
+  var ctx = c.getContext('2d');
+  var g = ctx.createRadialGradient(32,32,0, 32,32,32);
+  g.addColorStop(0,'rgba(255,255,255,1)');
+  g.addColorStop(0.4,'rgba(255,255,255,0.85)');
+  g.addColorStop(1,'rgba(255,255,255,0)');
+  ctx.fillStyle=g; ctx.fillRect(0,0,64,64);
+  return new THREE.CanvasTexture(c);
+})();
+function spawnParticle(x,y,z, color, size, life, vx,vy,vz, additive){
+  var mat = new THREE.MeshBasicMaterial({ color:color, map:softParticleTex, transparent:true, opacity:1,
+    blending: additive?THREE.AdditiveBlending:THREE.NormalBlending, depthWrite:false, side:THREE.DoubleSide });
+  var m = new THREE.Mesh(partGeo, mat);
+  m.position.set(x,y,z); m.scale.setScalar(size);
+  scene.add(m);
+  particles.push({ mesh:m, vx:vx,vy:vy,vz:vz, life:life, maxLife:life, spin:(Math.random()-0.5)*6, grow:1 });
+}
+function explosion(x,y,z, big){
+  var n = big?26:16;
+  // نار
+  for(var i=0;i<n;i++){
+    var a=Math.random()*Math.PI*2, sp=(big?10:6)*(0.4+Math.random());
+    spawnParticle(x,y,z, i%2?0xffce4a:0xff5a1a, (big?1.6:1.0)*(0.6+Math.random()), 0.5+Math.random()*0.4,
+      Math.cos(a)*sp, Math.abs(Math.sin(a))*sp*0.9+3, (Math.random()-0.5)*sp, true);
+  }
+  // دخان
+  for(var s=0;s<(big?12:7);s++){
+    spawnParticle(x,y+1,z, 0x333026, (big?2.2:1.5), 1.0+Math.random()*0.8,
+      (Math.random()-0.5)*3, 2+Math.random()*2, (Math.random()-0.5)*3, false);
+  }
+  // شظايا
+  for(var f=0;f<(big?10:6);f++){
+    var a2=Math.random()*Math.PI*2, sp2=8*(0.5+Math.random());
+    spawnParticle(x,y,z, 0x6b5a3a, 0.4, 0.7+Math.random()*0.5,
+      Math.cos(a2)*sp2, Math.sin(a2)*sp2*0.6+5, (Math.random()-0.5)*sp2, false);
+  }
+}
+function muzzleFlash(pos, dir){
+  spawnParticle(pos.x, pos.y, pos.z, 0xffe08a, 2.2, 0.12, dir.x*4, dir.y*4, 0, true);
+  spawnParticle(pos.x, pos.y, pos.z, 0xffffff, 1.3, 0.09, 0,0,0, true);
+}
+function dustPuff(x,y,z){
+  spawnParticle(x, y+0.2, z, 0xcaa76a, 1.0+Math.random(), 0.6+Math.random()*0.3,
+    (Math.random()-0.5)*2, 1+Math.random()*1.5, (Math.random()-0.5)*2, false);
+}
+
+/* ------------------------------------------------------------------ *
+ *  6) القذائف بفيزياء مقذوفات (Projectile + Gravity + Trail)
+ * ------------------------------------------------------------------ */
+var GRAVITY = -26;
+var projectiles = []; // {mesh, vel, fromPlayer, dmg, splash, life}
+var projGeo = new THREE.SphereGeometry(0.35, 8, 8);
+var projMatP = new THREE.MeshStandardMaterial({ color:0xffcf6b, emissive:0xff8a00, emissiveIntensity:0.8, roughness:0.4 });
+var projMatE = new THREE.MeshStandardMaterial({ color:0xff6b57, emissive:0xff2a1a, emissiveIntensity:0.8, roughness:0.4 });
+
+function fireProjectile(muzzleObj, dir, fromPlayer, dmg, splash){
+  var pos = new THREE.Vector3(); muzzleObj.getWorldPosition(pos);
+  var m = new THREE.Mesh(projGeo, fromPlayer?projMatP:projMatE);
+  m.position.copy(pos); m.castShadow = true;
+  scene.add(m);
+  var speed = fromPlayer ? 42 : 34;
+  projectiles.push({
+    mesh:m,
+    vel:new THREE.Vector3(dir.x*speed, dir.y*speed, 0),
+    fromPlayer:fromPlayer, dmg:dmg, splash:splash||0, life:5
+  });
+  muzzleFlash(pos, dir);
+  playSound('fire');
+  camShake = Math.max(camShake, fromPlayer?0.35:0.15);
+}
+
+/* ------------------------------------------------------------------ *
+ *  7) الصوت — توليد برمجي عبر Web Audio API
+ * ------------------------------------------------------------------ */
+var audioCtx = null, masterGain = null, muted = false, engineOsc = null, engineGain = null;
+function initAudio(){
+  if(audioCtx) return;
+  try{
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = audioCtx.createGain(); masterGain.gain.value = 0.6; masterGain.connect(audioCtx.destination);
+    // محرك الدبابة: مذبذب منخفض مع فلتر
+    engineOsc = audioCtx.createOscillator(); engineOsc.type='sawtooth'; engineOsc.frequency.value=42;
+    var ef = audioCtx.createBiquadFilter(); ef.type='lowpass'; ef.frequency.value=120;
+    engineGain = audioCtx.createGain(); engineGain.gain.value=0.0;
+    engineOsc.connect(ef); ef.connect(engineGain); engineGain.connect(masterGain);
+    engineOsc.start();
+  }catch(e){ audioCtx = null; }
+}
+function noiseBuffer(dur){
+  var n = Math.floor(audioCtx.sampleRate*dur);
+  var buf = audioCtx.createBuffer(1, n, audioCtx.sampleRate);
+  var d = buf.getChannelData(0);
+  for(var i=0;i<n;i++) d[i] = Math.random()*2-1;
+  return buf;
+}
+function playSound(kind){
+  if(!audioCtx || muted) return;
+  var t = audioCtx.currentTime;
+  if(kind==='fire'){
+    // دوي عميق: مذبذب هابط + ضجيج
+    var o = audioCtx.createOscillator(); o.type='square'; o.frequency.setValueAtTime(180,t); o.frequency.exponentialRampToValueAtTime(48,t+0.18);
+    var g = audioCtx.createGain(); g.gain.setValueAtTime(0.5,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.25);
+    o.connect(g); g.connect(masterGain); o.start(t); o.stop(t+0.26);
+    var ns=audioCtx.createBufferSource(); ns.buffer=noiseBuffer(0.15);
+    var nf=audioCtx.createBiquadFilter(); nf.type='lowpass'; nf.frequency.value=800;
+    var ng=audioCtx.createGain(); ng.gain.setValueAtTime(0.4,t); ng.gain.exponentialRampToValueAtTime(0.001,t+0.15);
+    ns.connect(nf); nf.connect(ng); ng.connect(masterGain); ns.start(t);
+  } else if(kind==='explosion'){
+    var ns2=audioCtx.createBufferSource(); ns2.buffer=noiseBuffer(0.6);
+    var nf2=audioCtx.createBiquadFilter(); nf2.type='lowpass'; nf2.frequency.setValueAtTime(1200,t); nf2.frequency.exponentialRampToValueAtTime(60,t+0.5);
+    var ng2=audioCtx.createGain(); ng2.gain.setValueAtTime(0.7,t); ng2.gain.exponentialRampToValueAtTime(0.001,t+0.6);
+    ns2.connect(nf2); nf2.connect(ng2); ng2.connect(masterGain); ns2.start(t);
+  } else if(kind==='hit'){
+    // رنين معدني
+    var o2=audioCtx.createOscillator(); o2.type='triangle'; o2.frequency.setValueAtTime(520,t); o2.frequency.exponentialRampToValueAtTime(180,t+0.12);
+    var g2=audioCtx.createGain(); g2.gain.setValueAtTime(0.3,t); g2.gain.exponentialRampToValueAtTime(0.001,t+0.15);
+    o2.connect(g2); g2.connect(masterGain); o2.start(t); o2.stop(t+0.16);
+  }
+}
+// موسيقى خلفية بسيطة (أربيجيو يتكرر)
+var musicTimer = 0;
+var musicNotes = [110, 138.6, 164.8, 220, 164.8, 138.6];
+var musicIdx = 0;
+function updateMusic(dt){
+  if(!audioCtx || muted) return;
+  musicTimer -= dt;
+  if(musicTimer<=0){
+    musicTimer = 0.42;
+    var t = audioCtx.currentTime;
+    var o = audioCtx.createOscillator(); o.type='sine'; o.frequency.value = musicNotes[musicIdx%musicNotes.length];
+    var g = audioCtx.createGain(); g.gain.setValueAtTime(0.0,t); g.gain.linearRampToValueAtTime(0.08,t+0.05); g.gain.exponentialRampToValueAtTime(0.001,t+0.4);
+    o.connect(g); g.connect(masterGain); o.start(t); o.stop(t+0.42);
+    musicIdx++;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ *  8) اللاعب والأعداء وحالة اللعبة
+ * ------------------------------------------------------------------ */
+var player = {
+  tank: buildTank({ body:0x5a7a3a, turret:0x3d5427 }),
+  x:0, vy:0, onGround:true,
+  hp:100, maxHp:100, fuel:100, maxFuel:100,
+  aim:0.35,           // زاوية المدفع (راديان)
+  fireCd:0, dir:1,
+  dmg:22, speed:14
+};
+scene.add(player.tank);
+
+var enemies = [];      // {tank, x, hp, maxHp, hpBar, fireCd, speed, dmg, range, isBoss}
+var state = 'menu';    // menu | playing | over | victory
+var stage = 1;
+var score = 0, coins = 0;
+var enemiesToSpawn = 0, spawnTimer = 0, bossSpawned = false;
+
+// مستويات التطوير
+var upgrades = {
+  damage: { name:'قوة المدفع', lvl:0, base:120, apply:function(){ player.dmg = 22 + upgrades.damage.lvl*8; } },
+  health: { name:'الدرع والصحة', lvl:0, base:120, apply:function(){ player.maxHp = 100 + upgrades.health.lvl*30; } },
+  speed:  { name:'المحرّك (السرعة)', lvl:0, base:100, apply:function(){ player.speed = 14 + upgrades.speed.lvl*2; } }
+};
+function applyUpgrades(){ upgrades.damage.apply(); upgrades.health.apply(); upgrades.speed.apply(); }
+function upgradeCost(u){ return Math.round(u.base * Math.pow(1.6, u.lvl)); }
+
+function spawnEnemy(isBoss){
+  var opts = isBoss
+    ? { body:0x8a1f1f, turret:0x5a1212, scale:1.9 }
+    : (Math.random()<0.35 ? { body:0x6d4a3a, turret:0x3a251c, scale:1.25 } : { body:0x8a3a34, turret:0x4a1c18, scale:1.0 });
+  var tank = buildTank(opts);
+  var ex = player.x + 55 + Math.random()*30;
+  tank.rotation.y = Math.PI; // مواجهة اللاعب (يسار)
+  scene.add(tank);
+  var hpBar = makeHealthBar(); scene.add(hpBar);
+  var heavy = opts.scale>1.1 && !isBoss;
+  enemies.push({
+    tank:tank, x:ex, hp: isBoss?(320+stage*40):(heavy?(60+stage*10):(30+stage*6)),
+    maxHp: isBoss?(320+stage*40):(heavy?(60+stage*10):(30+stage*6)),
+    hpBar:hpBar, fireCd:1+Math.random()*1.5,
+    speed: isBoss?4:(heavy?4:7), dmg: isBoss?18:(heavy?14:8),
+    range: isBoss?42:34, isBoss:!!isBoss, scale:opts.scale
+  });
+}
+
+function startStage(){
+  // تنظيف الأعداء والقذائف
+  enemies.forEach(function(e){ scene.remove(e.tank); scene.remove(e.hpBar); });
+  enemies = [];
+  projectiles.forEach(function(p){ scene.remove(p.mesh); }); projectiles = [];
+  bossSpawned = false;
+  enemiesToSpawn = 3 + stage; // عدد أعداء المرحلة قبل الزعيم
+  spawnTimer = 1;
+  player.x = 0; player.hp = player.maxHp; player.fuel = player.maxFuel; player.vy=0; player.onGround=true;
+  document.getElementById('stageNum').textContent = stage;
+  updateHUD();
+}
+
+/* ------------------------------------------------------------------ *
+ *  9) الإدخال (لمس + كيبورد)
+ * ------------------------------------------------------------------ */
+var keys = { left:false, right:false, up:false, down:false, fire:false, jump:false };
+
+function bindHold(id, on){
+  var el = document.getElementById(id);
+  var set = function(v){ return function(e){ e.preventDefault(); keys[on]=v; el.classList.toggle('on', v); }; };
+  el.addEventListener('pointerdown', set(true));
+  el.addEventListener('pointerup', set(false));
+  el.addEventListener('pointercancel', set(false));
+  el.addEventListener('pointerleave', set(false));
+}
+bindHold('btnLeft','left'); bindHold('btnRight','right');
+bindHold('btnAimUp','up'); bindHold('btnAimDown','down');
+bindHold('btnFire','fire'); bindHold('btnJump','jump');
+
+window.addEventListener('keydown', function(e){
+  if(e.code==='ArrowLeft') keys.left=true;
+  if(e.code==='ArrowRight') keys.right=true;
+  if(e.code==='ArrowUp') keys.up=true;
+  if(e.code==='ArrowDown') keys.down=true;
+  if(e.code==='Space'){ keys.fire=true; e.preventDefault(); }
+  if(e.code==='KeyS') keys.jump=true;
+});
+window.addEventListener('keyup', function(e){
+  if(e.code==='ArrowLeft') keys.left=false;
+  if(e.code==='ArrowRight') keys.right=false;
+  if(e.code==='ArrowUp') keys.up=false;
+  if(e.code==='ArrowDown') keys.down=false;
+  if(e.code==='Space') keys.fire=false;
+  if(e.code==='KeyS') keys.jump=false;
+});
+
+/* ------------------------------------------------------------------ *
+ *  10) تحديث اللعبة (المنطق)
+ * ------------------------------------------------------------------ */
+function updatePlayer(dt){
+  // الحركة الأفقية
+  var move = (keys.right?1:0) - (keys.left?1:0);
+  if(move!==0) player.dir = move>0?1:-1;
+  player.x += move * player.speed * dt;
+  player.x = Math.max(-20, Math.min(GROUND_LEN/2-20, player.x));
+
+  // القفز البسيط
+  var gy = groundHeightAt(player.x);
+  if(keys.jump && player.onGround){ player.vy = 12; player.onGround=false; }
+  player.vy += GRAVITY*dt;
+  var py = player.tank.position.y + player.vy*dt;
+  if(py <= gy){ py = gy; player.vy=0; player.onGround=true; }
+  player.tank.position.set(player.x, py, 0);
+  player.tank.rotation.y = 0; // اللاعب يواجه اليمين دائماً (الأعداء يأتون من اليمين)
+
+  // زاوية المدفع
+  if(keys.up) player.aim = Math.min(1.15, player.aim + 1.4*dt);
+  if(keys.down) player.aim = Math.max(-0.15, player.aim - 1.4*dt);
+  player.tank.userData.barrelPivot.rotation.z = player.aim;
+
+  // دوران العجلات + غبار
+  if(move!==0){
+    player.tank.userData.wheels.forEach(function(w){ w.rotation.z -= move*dt*10; });
+    if(Math.random()<0.4) dustPuff(player.x - player.dir*2.4, gy, (Math.random()-0.5)*2 + 1.1*(Math.random()<0.5?1:-1));
+    if(engineGain) engineGain.gain.value += (0.16 - engineGain.gain.value)*0.1;
+  } else {
+    if(engineGain) engineGain.gain.value += (0.05 - engineGain.gain.value)*0.1;
+  }
+  if(engineOsc) engineOsc.frequency.value = 42 + Math.abs(move)*22;
+
+  // الوقود (يُستهلك بالحركة، يتجدد بالوقوف) — عنصر تجميلي
+  if(move!==0) player.fuel = Math.max(0, player.fuel - 4*dt);
+  else player.fuel = Math.min(player.maxFuel, player.fuel + 8*dt);
+
+  // الإطلاق
+  player.fireCd -= dt;
+  if(keys.fire && player.fireCd<=0){
+    player.fireCd = 0.5;
+    var dir = new THREE.Vector3(Math.cos(player.aim), Math.sin(player.aim), 0);
+    fireProjectile(player.tank.userData.muzzle, dir, true, player.dmg, 3);
+  }
+}
+
+function updateEnemies(dt){
+  for(var i=enemies.length-1;i>=0;i--){
+    var e = enemies[i];
+    var gy = groundHeightAt(e.x);
+    var d = e.x - player.x;
+    // الذكاء البسيط: يقترب حتى المدى ثم يتوقف ويطلق
+    if(Math.abs(d) > e.range){ e.x -= Math.sign(d) * e.speed * dt; }
+    e.tank.position.set(e.x, gy, 0);
+
+    // توجيه البرج نحو اللاعب (زاوية مقذوف تقريبية)
+    var bp = e.tank.userData.barrelPivot;
+    var aimAng = 0.35 + Math.min(0.5, Math.abs(d)/120);
+    bp.rotation.z = -aimAng; // معكوسة لأن الدبابة مقلوبة (تواجه اليسار)
+
+    // الإطلاق على اللاعب
+    e.fireCd -= dt;
+    if(e.fireCd<=0 && Math.abs(d) < e.range+6){
+      e.fireCd = e.isBoss?0.9:(1.4+Math.random());
+      var dir = new THREE.Vector3(-Math.cos(aimAng), Math.sin(aimAng), 0); // نحو اليسار وللأعلى
+      fireProjectile(e.tank.userData.muzzle, dir, false, e.dmg, 0);
+    }
+
+    // تحديث شريط الصحة
+    e.hpBar.position.set(e.x, gy + 3.6*e.scale, 0);
+    e.hpBar.userData.fg.scale.x = Math.max(0.001, e.hp/e.maxHp);
+    e.hpBar.userData.fg.position.x = -(1 - e.hp/e.maxHp)*1.5;
+
+    if(e.hp<=0){
+      var ep = e.tank.position;
+      explosion(ep.x, ep.y+1.5, 0, e.isBoss);
+      playSound('explosion');
+      camShake = Math.max(camShake, e.isBoss?1.0:0.5);
+      score += e.isBoss?500:(e.scale>1.1?40:20);
+      coins += e.isBoss?60:(e.scale>1.1?8:4);
+      scene.remove(e.tank); scene.remove(e.hpBar);
+      enemies.splice(i,1);
+      updateHUD();
+    }
+  }
+
+  // منطق ظهور الأعداء / الزعيم
+  if(state==='playing'){
+    if(enemiesToSpawn>0){
+      spawnTimer -= dt;
+      if(spawnTimer<=0 && enemies.length < 4){
+        spawnEnemy(false); enemiesToSpawn--; spawnTimer = Math.max(0.8, 2.2 - stage*0.1);
+      }
+    } else if(!bossSpawned && enemies.length===0){
+      bossSpawned = true; spawnEnemy(true);
+    } else if(bossSpawned && enemies.length===0){
+      onVictory();
+    }
+  }
+}
+
+function updateProjectiles(dt){
+  for(var i=projectiles.length-1;i>=0;i--){
+    var p = projectiles[i];
+    p.vel.y += GRAVITY*dt;
+    p.mesh.position.addScaledVector(p.vel, dt);
+    p.life -= dt;
+    // أثر القذيفة
+    if(Math.random()<0.6) spawnParticle(p.mesh.position.x, p.mesh.position.y, p.mesh.position.z,
+      p.fromPlayer?0xffce6b:0xff7a5a, 0.5, 0.25, 0,0,0, true);
+
+    var hit = false;
+    var gy = groundHeightAt(p.mesh.position.x);
+
+    if(p.fromPlayer){
+      // إصابة الأعداء
+      for(var j=0;j<enemies.length;j++){
+        var e = enemies[j];
+        if(Math.abs(p.mesh.position.x - e.x) < 2.2*e.scale && p.mesh.position.y < gy + 4*e.scale){
+          e.hp -= p.dmg; hit=true; playSound('hit');
+          if(p.splash){ for(var k=0;k<enemies.length;k++){ if(k!==j && Math.abs(enemies[k].x - e.x)<p.splash) enemies[k].hp -= p.dmg*0.5; } }
+          break;
+        }
+      }
+    } else {
+      // إصابة اللاعب
+      if(Math.abs(p.mesh.position.x - player.x) < 2.4 && Math.abs(p.mesh.position.y - player.tank.position.y - 1) < 2.4){
+        player.hp -= p.dmg; hit=true; playSound('hit');
+        camShake = Math.max(camShake, 0.5); flashDamage();
+        if(player.hp<=0){ player.hp=0; onGameOver(); }
+        updateHUD();
+      }
+    }
+
+    if(p.mesh.position.y <= gy || hit || p.life<=0){
+      explosion(p.mesh.position.x, Math.max(gy, p.mesh.position.y), 0, false);
+      if(!hit) playSound('explosion');
+      scene.remove(p.mesh); projectiles.splice(i,1);
+    }
+  }
+}
+
+function updateParticles(dt){
+  for(var i=particles.length-1;i>=0;i--){
+    var p = particles[i];
+    p.life -= dt;
+    p.vy += GRAVITY*0.35*dt;
+    p.mesh.position.x += p.vx*dt; p.mesh.position.y += p.vy*dt; p.mesh.position.z += p.vz*dt;
+    p.mesh.rotation.z += p.spin*dt;
+    var t = p.life/p.maxLife;
+    p.mesh.material.opacity = Math.max(0, t);
+    p.mesh.scale.multiplyScalar(1 + dt*0.9); // تمدد تدريجي
+    p.mesh.quaternion.copy(camera.quaternion); // مواجهة الكاميرا (billboard)
+    if(p.life<=0){ scene.remove(p.mesh); p.mesh.material.dispose(); particles.splice(i,1); }
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ *  11) الكاميرا + الاهتزاز + الخلفية Parallax
+ * ------------------------------------------------------------------ */
+function updateCamera(dt){
+  var tx = player.tank.position.x;
+  var desired = new THREE.Vector3(tx + CAM_OFFSET.x, CAM_OFFSET.y, CAM_OFFSET.z);
+  camera.position.lerp(desired, Math.min(1, dt*4));
+  var lookX = tx + 6*player.dir;
+  camera.lookAt(lookX, 2.5, 0);
+
+  // اهتزاز الكاميرا عند الانفجارات
+  if(camShake>0.001){
+    camera.position.x += (Math.random()-0.5)*camShake*2;
+    camera.position.y += (Math.random()-0.5)*camShake*1.5;
+    camShake = Math.max(0, camShake - dt*2.5);
+  }
+
+  // Parallax: مجموعة الجبال تتبع الكاميرا (تبقى ظاهرة)، الغيوم تنجرف
+  bgGroup.position.x = tx;
+  for(var i=0;i<clouds.length;i++){
+    clouds[i].position.x += dt*2;
+    if(clouds[i].position.x - tx > 220) clouds[i].position.x = tx - 220;
+  }
+  // الشمس تتبع اللاعب لتبقى الظلال متسقة
+  sun.position.x = tx - 40; sun.target.position.set(tx, 0, 0); sun.target.updateMatrixWorld();
+}
+
+/* ------------------------------------------------------------------ *
+ *  12) واجهة HUD + الشاشات
+ * ------------------------------------------------------------------ */
+var hpFill=document.getElementById('hpFill'), fuelFill=document.getElementById('fuelFill');
+var scoreVal=document.getElementById('scoreVal'), coinVal=document.getElementById('coinVal'), enemyCount=document.getElementById('enemyCount');
+var dmgFlash=document.getElementById('dmgFlash');
+
+function updateHUD(){
+  hpFill.style.width = Math.max(0, player.hp/player.maxHp*100)+'%';
+  fuelFill.style.width = Math.max(0, player.fuel/player.maxFuel*100)+'%';
+  scoreVal.textContent = score;
+  coinVal.textContent = coins;
+  var remaining = enemies.length + enemiesToSpawn + ((!bossSpawned)?1:0);
+  enemyCount.textContent = Math.max(0, remaining);
+}
+function flashDamage(){ dmgFlash.style.opacity='1'; setTimeout(function(){ dmgFlash.style.opacity='0'; }, 90); }
+
+function show(id){ document.getElementById(id).classList.remove('hidden'); }
+function hide(id){ document.getElementById(id).classList.add('hidden'); }
+
+function onGameOver(){
+  state='over';
+  document.getElementById('goScore').textContent=score;
+  document.getElementById('goStage').textContent=stage;
+  show('gameOverScreen');
+}
+function onVictory(){
+  state='victory';
+  document.getElementById('vicScore').textContent=score;
+  document.getElementById('vicCoins').textContent=coins;
+  renderUpgrades();
+  show('victoryScreen');
+}
+function renderUpgrades(){
+  var list = document.getElementById('upgradeList'); list.innerHTML='';
+  Object.keys(upgrades).forEach(function(key){
+    var u = upgrades[key];
+    var cost = upgradeCost(u);
+    var row = document.createElement('div');
+    row.className='upg-row glass' + (coins<cost?' disabled':'');
+    row.innerHTML = '<div><div class="u-name">'+u.name+'</div><div class="u-lvl">المستوى '+u.lvl+'</div></div><div class="u-cost">◆ '+cost+'</div>';
+    row.addEventListener('click', function(){
+      var c = upgradeCost(u);
+      if(coins>=c){ coins-=c; u.lvl++; applyUpgrades(); if(key==='health') player.hp=player.maxHp; renderUpgrades(); updateHUD(); }
+    });
+    list.appendChild(row);
+  });
+}
+
+// أزرار الشاشات
+document.getElementById('startBtn').addEventListener('click', function(){
+  initAudio(); if(audioCtx && audioCtx.state==='suspended') audioCtx.resume();
+  hide('startScreen'); applyUpgrades(); startStage(); state='playing';
+});
+document.getElementById('retryBtn').addEventListener('click', function(){
+  hide('gameOverScreen');
+  stage=1; score=0; coins=0;
+  upgrades.damage.lvl=0; upgrades.health.lvl=0; upgrades.speed.lvl=0; applyUpgrades();
+  startStage(); state='playing';
+});
+document.getElementById('nextStageBtn').addEventListener('click', function(){
+  hide('victoryScreen'); stage++; startStage(); state='playing';
+});
+document.getElementById('muteBtn').addEventListener('click', function(){
+  muted=!muted; this.textContent = muted?'🔇':'🔊';
+  if(masterGain) masterGain.gain.value = muted?0:0.6;
+});
+
+/* ------------------------------------------------------------------ *
+ *  13) حلقة اللعبة + التجاوب
+ * ------------------------------------------------------------------ */
+function resize(){
+  var w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w/h; camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize); resize();
+
+// وضع اللاعب مبدئياً + وضع كاميرا مبدئي لعرض القائمة
+player.tank.position.set(0, groundHeightAt(0), 0);
+camera.position.set(CAM_OFFSET.x, CAM_OFFSET.y, CAM_OFFSET.z);
+camera.lookAt(6, 2.5, 0);
+
+var clock = new THREE.Clock();
+function loop(){
+  requestAnimationFrame(loop);
+  var dt = Math.min(0.033, clock.getDelta());
+
+  if(state==='playing'){
+    updatePlayer(dt);
+    updateEnemies(dt);
+    updateProjectiles(dt);
+    updateMusic(dt);
+    updateHUD();
+  }
+  updateParticles(dt);
+  updateCamera(dt);
+
+  renderer.render(scene, camera);
+}
+loop();
+
+// إظهار زر البدء بعد جهوزية كل شيء
+document.getElementById('loadingText').style.display='none';
+document.getElementById('startBtn').style.display='inline-block';
+
+})();
+</script>
+</body>
+</html>
