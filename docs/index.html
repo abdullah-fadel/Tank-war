@@ -365,24 +365,23 @@ groundGeo.rotateX(-Math.PI/2);
 
 // نسيج رملي إجرائي (حبيبات + تدرّجات لونية) بدل اللون المصمت
 function makeSandTexture(){
-  var c = document.createElement('canvas'); c.width = 256; c.height = 256;
-  var ctx = c.getContext('2d');
-  ctx.fillStyle = '#caa76a'; ctx.fillRect(0,0,256,256);
-  // بقع لونية كبيرة (تفاوت الرمل)
-  for(var i=0;i<26;i++){
-    var r = 20+Math.random()*46;
-    var g = ctx.createRadialGradient(Math.random()*256,Math.random()*256,0, Math.random()*256,Math.random()*256,r);
-    var tone = Math.random()<0.5 ? 'rgba(150,118,70,0.18)' : 'rgba(230,196,140,0.18)';
-    g.addColorStop(0,tone); g.addColorStop(1,'rgba(0,0,0,0)');
-    ctx.fillStyle=g; ctx.fillRect(0,0,256,256);
-  }
-  // حبيبات دقيقة
-  for(var j=0;j<3200;j++){
-    var x=Math.random()*256, y=Math.random()*256;
-    ctx.fillStyle = Math.random()<0.5 ? 'rgba(90,70,40,0.10)' : 'rgba(255,240,210,0.10)';
-    ctx.fillRect(x,y,1,1);
-  }
-  var tex = new THREE.CanvasTexture(c);
+  var tex = makeCanvasTexture(256, 256, function(ctx, w, h){
+    ctx.fillStyle = '#caa76a'; ctx.fillRect(0,0,w,h);
+    // بقع لونية كبيرة (تفاوت الرمل)
+    for(var i=0;i<26;i++){
+      var r = 20+Math.random()*46;
+      var g = ctx.createRadialGradient(Math.random()*w,Math.random()*h,0, Math.random()*w,Math.random()*h,r);
+      var tone = Math.random()<0.5 ? 'rgba(150,118,70,0.18)' : 'rgba(230,196,140,0.18)';
+      g.addColorStop(0,tone); g.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+    }
+    // حبيبات دقيقة
+    for(var j=0;j<3200;j++){
+      var x=Math.random()*w, y=Math.random()*h;
+      ctx.fillStyle = Math.random()<0.5 ? 'rgba(90,70,40,0.10)' : 'rgba(255,240,210,0.10)';
+      ctx.fillRect(x,y,1,1);
+    }
+  });
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(GROUND_LEN/9, 120/9);
   tex.encoding = THREE.sRGBEncoding;
@@ -658,6 +657,19 @@ var softParticleTex = (function(){
   ctx.fillStyle=g; ctx.fillRect(0,0,64,64);
   return new THREE.CanvasTexture(c);
 })();
+// إبقاء أي مجمّع تأثيرات (particles/shockwaves/...) عند سقف ثابت: يزيل ويتخلّص من الأقدم عند تجاوزه
+function capPool(arr, max, disposeFn){
+  if(arr.length <= max) return;
+  var old = arr.shift();
+  scene.remove(old.mesh || old.light || old.spr);
+  if(disposeFn) disposeFn(old);
+}
+// إنشاء نسيج Canvas مشترك: يوفّر إعداد الحجم والسياق، ويكتفي المستدعي برسم محتواه
+function makeCanvasTexture(w, h, drawFn){
+  var c = document.createElement('canvas'); c.width = w; c.height = h;
+  drawFn(c.getContext('2d'), w, h);
+  return new THREE.CanvasTexture(c);
+}
 function spawnParticle(x,y,z, color, size, life, vx,vy,vz, additive){
   var mat = new THREE.MeshBasicMaterial({ color:color, map:softParticleTex, transparent:true, opacity:1,
     blending: additive?THREE.AdditiveBlending:THREE.NormalBlending, depthWrite:false, side:THREE.DoubleSide });
@@ -665,7 +677,7 @@ function spawnParticle(x,y,z, color, size, life, vx,vy,vz, additive){
   m.position.set(x,y,z); m.scale.setScalar(size);
   scene.add(m);
   particles.push({ mesh:m, vx:vx,vy:vy,vz:vz, life:life, maxLife:life, spin:(Math.random()-0.5)*6, grow:1 });
-  if(particles.length > 160){ var old = particles.shift(); scene.remove(old.mesh); old.mesh.material.dispose(); }
+  capPool(particles, 160, function(old){ old.mesh.material.dispose(); });
 }
 function explosion(x,y,z, big){
   var n = big?26:16;
@@ -709,6 +721,7 @@ function spawnShockwave(x,y,z,maxR){
   var m = new THREE.Mesh(shockGeo, mat); m.position.set(x,y,z);
   scene.add(m);
   shockwaves.push({ mesh:m, life:0.45, maxLife:0.45, maxR:maxR });
+  capPool(shockwaves, 10, function(old){ old.mesh.material.dispose(); });
 }
 function updateShockwaves(dt){
   for(var i=shockwaves.length-1;i>=0;i--){
@@ -722,75 +735,93 @@ function updateShockwaves(dt){
 }
 
 // ومضة ضوئية لحظية عند الانفجار (إحساس واقعي بالضوء المتوهّج)
-var flashLights = [];
+// مجمّع ثابت من الأضواء يُعاد استخدامه دورياً بدل إضافة/إزالة ضوء لكل انفجار،
+// لأن تغيّر عدد الأضواء في المشهد يفرض على Three.js إعادة تجميع شيدرز كل المواد المضيئة.
+var FLASH_POOL_SIZE = 6;
+var flashPool = [];
+for(var fpi=0; fpi<FLASH_POOL_SIZE; fpi++){
+  var flashLight = new THREE.PointLight(0xffb060, 0, 6, 2);
+  scene.add(flashLight);
+  flashPool.push({ light:flashLight, life:0, maxLife:0.18, baseIntensity:0 });
+}
+var nextFlashIndex = 0;
 function spawnFlashLight(x,y,z,intensity,distance){
-  var l = new THREE.PointLight(0xffb060, intensity, distance||6, 2);
-  l.position.set(x,y,z); scene.add(l);
-  flashLights.push({ light:l, life:0.18, maxLife:0.18, baseIntensity:intensity });
-  if(flashLights.length > 8){ var old = flashLights.shift(); scene.remove(old.light); }
+  var f = flashPool[nextFlashIndex];
+  nextFlashIndex = (nextFlashIndex+1) % flashPool.length;
+  f.light.position.set(x,y,z);
+  f.light.distance = distance||6;
+  f.baseIntensity = intensity; f.maxLife = 0.18; f.life = 0.18;
+  f.light.intensity = intensity;
 }
 function updateFlashLights(dt){
-  for(var i=flashLights.length-1;i>=0;i--){
-    var f = flashLights[i]; f.life -= dt;
+  for(var i=0;i<flashPool.length;i++){
+    var f = flashPool[i];
+    if(f.life<=0) continue;
+    f.life -= dt;
     f.light.intensity = Math.max(0, f.baseIntensity*(f.life/f.maxLife));
-    if(f.life<=0){ scene.remove(f.light); flashLights.splice(i,1); }
   }
 }
 
 // آثار احتراق على الرمل (تبقى كندوب معركة، بعدد محدود)
 var scorchMarks = [];
-var scorchTex = (function(){
-  var c = document.createElement('canvas'); c.width=64; c.height=64;
-  var ctx = c.getContext('2d');
-  var g = ctx.createRadialGradient(32,32,0,32,32,32);
+var scorchTex = makeCanvasTexture(64, 64, function(ctx, w, h){
+  var g = ctx.createRadialGradient(w/2,h/2,0,w/2,h/2,w/2);
   g.addColorStop(0,'rgba(20,15,10,0.85)'); g.addColorStop(0.6,'rgba(20,15,10,0.5)'); g.addColorStop(1,'rgba(20,15,10,0)');
-  ctx.fillStyle=g; ctx.fillRect(0,0,64,64);
-  return new THREE.CanvasTexture(c);
-})();
+  ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+});
 var scorchGeo = new THREE.PlaneGeometry(1,1); scorchGeo.rotateX(-Math.PI/2);
 function spawnScorch(x,y,z,size){
   var mat = new THREE.MeshBasicMaterial({ map:scorchTex, transparent:true, opacity:0.8, depthWrite:false });
   var m = new THREE.Mesh(scorchGeo, mat); m.position.set(x,y,z); m.scale.set(size,1,size); m.rotation.y = Math.random()*Math.PI;
   scene.add(m);
   scorchMarks.push({ mesh:m, mat:mat });
-  if(scorchMarks.length > 26){ var old = scorchMarks.shift(); scene.remove(old.mesh); old.mat.dispose(); }
+  capPool(scorchMarks, 26, function(old){ old.mat.dispose(); });
 }
 
-// آثار الجنزير على الرمل خلف الدبابة المتحركة
+// آثار الجنزير على الرمل خلف الدبابة المتحركة (مادة واحدة مشتركة لكل الآثار، فهي متطابقة دائماً)
 var treadMarks = [];
-var treadTex = (function(){
-  var c = document.createElement('canvas'); c.width=32; c.height=16;
-  var ctx = c.getContext('2d'); ctx.fillStyle='rgba(40,30,18,0.5)'; ctx.fillRect(0,0,32,16);
-  return new THREE.CanvasTexture(c);
-})();
+var treadTex = makeCanvasTexture(32, 16, function(ctx, w, h){
+  ctx.fillStyle='rgba(40,30,18,0.5)'; ctx.fillRect(0,0,w,h);
+});
 var treadGeo = new THREE.PlaneGeometry(1,1); treadGeo.rotateX(-Math.PI/2);
+var treadMat = new THREE.MeshBasicMaterial({ map:treadTex, transparent:true, opacity:0.5, depthWrite:false });
 function spawnTread(x,y,z){
-  var mat = new THREE.MeshBasicMaterial({ map:treadTex, transparent:true, opacity:0.5, depthWrite:false });
-  var m = new THREE.Mesh(treadGeo, mat); m.position.set(x,y+0.015,z); m.scale.set(1.1,1,0.5);
+  var m = new THREE.Mesh(treadGeo, treadMat); m.position.set(x,y+0.015,z); m.scale.set(1.1,1,0.5);
   scene.add(m);
-  treadMarks.push({ mesh:m, mat:mat });
-  if(treadMarks.length > 60){ var old = treadMarks.shift(); scene.remove(old.mesh); old.mat.dispose(); }
+  treadMarks.push({ mesh:m });
+  capPool(treadMarks, 60);
 }
 
-// أرقام الضرر الطافية فوق العدو المُصاب
-var floatTexts = [];
+// أرقام الضرر الطافية فوق العدو المُصاب — مجمّع ثابت مُعاد الاستخدام (رسم نصّي متكرر
+// بدل إنشاء Canvas/Texture/Material جديدة لكل إصابة، فهذا رفع فعلي لبيانات GPU في كل طلقة)
+var FLOAT_TEXT_POOL_SIZE = 16;
+var floatTextPool = [];
+for(var fti=0; fti<FLOAT_TEXT_POOL_SIZE; fti++){
+  var ftCanvas = document.createElement('canvas'); ftCanvas.width=128; ftCanvas.height=64;
+  var ftTex = new THREE.CanvasTexture(ftCanvas);
+  var ftMat = new THREE.SpriteMaterial({ map:ftTex, transparent:true, depthTest:false, opacity:0 });
+  var ftSpr = new THREE.Sprite(ftMat); ftSpr.scale.set(2.6,1.3,1); ftSpr.renderOrder = 1000;
+  scene.add(ftSpr);
+  floatTextPool.push({ canvas:ftCanvas, ctx:ftCanvas.getContext('2d'), tex:ftTex, mat:ftMat, spr:ftSpr, life:0, maxLife:0.9, vy:2.2 });
+}
+var nextFloatTextIndex = 0;
 function spawnDamageText(x,y,z,text,color){
-  var c = document.createElement('canvas'); c.width=128; c.height=64;
-  var ctx = c.getContext('2d');
-  ctx.font = '800 42px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillStyle = color; ctx.fillText(text,64,32);
-  var tex = new THREE.CanvasTexture(c);
-  var mat = new THREE.SpriteMaterial({ map:tex, transparent:true, depthTest:false });
-  var spr = new THREE.Sprite(mat); spr.scale.set(2.6,1.3,1); spr.position.set(x,y,z); spr.renderOrder = 1000;
-  scene.add(spr);
-  floatTexts.push({ spr:spr, tex:tex, mat:mat, life:0.9, maxLife:0.9, vy:2.2 });
-  if(floatTexts.length > 16){ var old = floatTexts.shift(); scene.remove(old.spr); old.tex.dispose(); old.mat.dispose(); }
+  var f = floatTextPool[nextFloatTextIndex];
+  nextFloatTextIndex = (nextFloatTextIndex+1) % floatTextPool.length;
+  f.ctx.clearRect(0,0,128,64);
+  f.ctx.font = '800 42px Arial'; f.ctx.textAlign='center'; f.ctx.textBaseline='middle';
+  f.ctx.fillStyle = color; f.ctx.fillText(text,64,32);
+  f.tex.needsUpdate = true;
+  f.spr.position.set(x,y,z);
+  f.mat.opacity = 1; f.life = f.maxLife;
 }
 function updateFloatTexts(dt){
-  for(var i=floatTexts.length-1;i>=0;i--){
-    var f = floatTexts[i]; f.life -= dt;
-    f.spr.position.y += f.vy*dt; f.mat.opacity = Math.max(0, f.life/f.maxLife);
-    if(f.life<=0){ scene.remove(f.spr); f.tex.dispose(); f.mat.dispose(); floatTexts.splice(i,1); }
+  for(var i=0;i<floatTextPool.length;i++){
+    var f = floatTextPool[i];
+    if(f.life<=0) continue;
+    f.life -= dt;
+    f.spr.position.y += f.vy*dt;
+    f.mat.opacity = Math.max(0, f.life/f.maxLife);
   }
 }
 
@@ -801,7 +832,7 @@ var casingMat = new THREE.MeshStandardMaterial({ color:0xC9A227, metalness:0.8, 
 function ejectCasing(pos, dirSign){
   var m = new THREE.Mesh(casingGeo, casingMat); m.position.copy(pos); scene.add(m);
   casings.push({ mesh:m, vx:dirSign*-3-Math.random()*2, vy:4+Math.random()*2, vz:(Math.random()-0.5)*3, life:1.4, spin:(Math.random()-0.5)*10 });
-  if(casings.length > 20){ var old = casings.shift(); scene.remove(old.mesh); }
+  capPool(casings, 20);
 }
 function updateCasings(dt){
   for(var i=casings.length-1;i>=0;i--){
@@ -983,7 +1014,8 @@ function spawnEnemy(isBoss){
     hpBar:hpBar, fireCd:1+Math.random()*1.5,
     speed: isBoss?4:(heavy?4:7), dmg: isBoss?18:(heavy?14:8),
     range: isBoss?42:34, isBoss:!!isBoss, isHeli:false, scale:opts.scale,
-    armor: isBoss?0.25:(heavy?0.15:0), enraged:false, fireCdMultiplier:1
+    armor: isBoss?0.25:(heavy?0.15:0), enraged:false, fireCdMultiplier:1,
+    scoreValue: isBoss?500:(heavy?40:20), coinValue: isBoss?60:(heavy?8:4), hpBarYOffset:0
   });
 }
 
@@ -996,8 +1028,9 @@ function spawnHelicopter(){
   var hpBar = makeHealthBar(); scene.add(hpBar);
   enemies.push({
     tank:tank, x:ex, hp:34+stage*5, maxHp:34+stage*5, hpBar:hpBar, fireCd:1+Math.random(),
-    speed:5, dmg:10, range:9999, isBoss:false, isHeli:true, scale:1, hoverY:hoverY, phase:Math.random()*10,
-    armor:0, enraged:false, fireCdMultiplier:1
+    speed:5, dmg:10, isBoss:false, isHeli:true, scale:1, hoverY:hoverY, phase:Math.random()*10,
+    armor:0, enraged:false, fireCdMultiplier:1,
+    scoreValue:30, coinValue:7, hpBarYOffset:1.4
   });
 }
 
@@ -1111,20 +1144,22 @@ function updatePlayer(dt){
   }
 }
 
+// لون توهّج البرج الثابت أثناء غضب الزعيم (يُنشأ مرة واحدة بدل تخصيصه كل إطار)
+var ENRAGE_EMISSIVE_COLOR = new THREE.Color(0xff2200);
+
 function updateGroundEnemy(e, dt){
   var gy = groundHeightAt(e.x);
   var d = e.x - player.x;
   // الذكاء البسيط: يقترب حتى المدى ثم يتوقف ويطلق
   if(Math.abs(d) > e.range){ e.x -= Math.sign(d) * e.speed * dt; }
   e.tank.position.set(e.x, gy, 0);
-  updateTankRecoil(e.tank, dt);
 
   // تفعيل غضب الزعيم عند انخفاض صحته (سرعة إطلاق أعلى + توهّج تحذيري)
   if(e.isBoss && !e.enraged && e.hp <= e.maxHp*0.3){
     e.enraged = true; e.fireCdMultiplier = 0.55;
   }
   if(e.enraged && e.tank.userData.turretMesh){
-    e.tank.userData.turretMesh.material.emissive = new THREE.Color(0xff2200);
+    e.tank.userData.turretMesh.material.emissive = ENRAGE_EMISSIVE_COLOR;
     e.tank.userData.turretMesh.material.emissiveIntensity = 0.35 + Math.sin(performance.now()*0.012)*0.3;
   }
 
@@ -1140,8 +1175,6 @@ function updateGroundEnemy(e, dt){
     var dir = new THREE.Vector3(-Math.cos(aimAng), Math.sin(aimAng), 0); // نحو اليسار وللأعلى
     fireProjectile(e.tank.userData.muzzle, dir, false, e.dmg, 0, e.tank);
   }
-
-  updateEnemyHealthBar(e, gy);
 }
 
 function updateHelicopter(e, dt){
@@ -1155,20 +1188,18 @@ function updateHelicopter(e, dt){
   e.tank.userData.rotor.rotation.y += dt*40;
   e.tank.userData.rotor2.rotation.y += dt*40;
   e.tank.userData.tailRotor.rotation.x += dt*50;
-  updateTankRecoil(e.tank, dt);
 
   e.fireCd -= dt;
   if(e.fireCd<=0 && Math.abs(d) < 26){
-    e.fireCd = 1.6 + Math.random();
+    e.fireCd = (1.6 + Math.random()) * e.fireCdMultiplier;
     var dropDir = new THREE.Vector3(-0.3, -0.95, 0).normalize();
     fireProjectile(e.tank.userData.muzzle, dropDir, false, e.dmg, 3.5, e.tank);
   }
-
-  updateEnemyHealthBar(e, hoverY, z);
 }
 
-function updateEnemyHealthBar(e, y, z){
-  e.hpBar.position.set(e.x, y + 3.6*e.scale + (e.isHeli?1.4:0), z||0);
+function updateEnemyHealthBar(e){
+  var pos = e.tank.position;
+  e.hpBar.position.set(e.x, pos.y + 3.6*e.scale + e.hpBarYOffset, pos.z||0);
   e.hpBar.userData.fg.scale.x = Math.max(0.001, e.hp/e.maxHp);
   e.hpBar.userData.fg.position.x = -(1 - e.hp/e.maxHp)*1.5;
 }
@@ -1177,14 +1208,16 @@ function updateEnemies(dt){
   for(var i=enemies.length-1;i>=0;i--){
     var e = enemies[i];
     if(e.isHeli) updateHelicopter(e, dt); else updateGroundEnemy(e, dt);
+    updateTankRecoil(e.tank, dt);
+    updateEnemyHealthBar(e);
 
     if(e.hp<=0){
       var ep = e.tank.position;
       explosion(ep.x, ep.y+1.5, ep.z||0, e.isBoss);
       playSound('explosion');
       camShake = Math.max(camShake, e.isBoss?1.0:0.5);
-      score += e.isBoss?500:(e.isHeli?30:(e.scale>1.1?40:20));
-      coins += e.isBoss?60:(e.isHeli?7:(e.scale>1.1?8:4));
+      score += e.scoreValue;
+      coins += e.coinValue;
       scene.remove(e.tank); scene.remove(e.hpBar);
       enemies.splice(i,1);
       updateHUD();
@@ -1268,7 +1301,7 @@ function updateParticles(dt){
 /* ------------------------------------------------------------------ *
  *  11) الكاميرا + الاهتزاز + الخلفية Parallax
  * ------------------------------------------------------------------ */
-var BASE_FOV = 45;
+var BASE_FOV = camera.fov;
 function updateCamera(dt){
   var tx = player.tank.position.x;
   var desired = new THREE.Vector3(tx + CAM_OFFSET.x, CAM_OFFSET.y, CAM_OFFSET.z);
@@ -1338,16 +1371,28 @@ function flashDamage(){ dmgFlash.style.opacity='1'; setTimeout(function(){ dmgFl
 function showHitMarker(){ reticleEl.classList.add('hit'); clearTimeout(showHitMarker._t); showHitMarker._t=setTimeout(function(){ reticleEl.classList.remove('hit'); }, 140); }
 function showBanner(text){ stageBannerEl.textContent=text; stageBannerEl.classList.add('show'); clearTimeout(showBanner._t); showBanner._t=setTimeout(function(){ stageBannerEl.classList.remove('show'); }, 1400); }
 
+// متجهات مُعاد استخدامها لتفادي تخصيص Vector3 جديد كل إطار
+var _reticleOrigin = new THREE.Vector3();
+var _reticleTarget = new THREE.Vector3();
+var _lastReticleVisible=null, _lastReticleLeft=null, _lastReticleTop=null;
 function updateReticle(){
-  var origin = new THREE.Vector3(); player.tank.userData.muzzle.getWorldPosition(origin);
-  var dir = new THREE.Vector3(Math.cos(player.aim), Math.sin(player.aim), 0);
-  var target = origin.clone().addScaledVector(dir, 14);
-  var ndc = target.clone().project(camera);
-  if(ndc.z>1 || ndc.z<-1){ reticleEl.style.opacity=0; return; }
-  reticleEl.style.opacity=1;
-  reticleEl.style.left = ((ndc.x*0.5+0.5)*window.innerWidth)+'px';
-  reticleEl.style.top = ((-ndc.y*0.5+0.5)*window.innerHeight)+'px';
+  player.tank.userData.muzzle.getWorldPosition(_reticleOrigin);
+  _reticleTarget.set(Math.cos(player.aim)*14, Math.sin(player.aim)*14, 0).add(_reticleOrigin);
+  _reticleTarget.project(camera);
+
+  if(_reticleTarget.z>1 || _reticleTarget.z<-1){
+    if(_lastReticleVisible!==false){ reticleEl.style.opacity=0; _lastReticleVisible=false; }
+    return;
+  }
+  if(_lastReticleVisible!==true){ reticleEl.style.opacity=1; _lastReticleVisible=true; }
+
+  var left = Math.round((_reticleTarget.x*0.5+0.5)*window.innerWidth);
+  var top = Math.round((-_reticleTarget.y*0.5+0.5)*window.innerHeight);
+  if(left!==_lastReticleLeft){ reticleEl.style.left=left+'px'; _lastReticleLeft=left; }
+  if(top!==_lastReticleTop){ reticleEl.style.top=top+'px'; _lastReticleTop=top; }
 }
+
+var _lastRadarLeftOp=-1, _lastRadarRightOp=-1;
 function updateRadar(){
   var THRESH = 18;
   var nearestLeftD=Infinity, nearestRightD=Infinity;
@@ -1356,10 +1401,16 @@ function updateRadar(){
     if(d>THRESH && d<nearestRightD) nearestRightD=d;
     if(d<-THRESH && -d<nearestLeftD) nearestLeftD=-d;
   });
-  radarLeftEl.style.opacity = nearestLeftD<Infinity ? Math.max(0.35, 1-nearestLeftD/150) : 0;
-  radarRightEl.style.opacity = nearestRightD<Infinity ? Math.max(0.35, 1-nearestRightD/150) : 0;
+  var leftOp = nearestLeftD<Infinity ? Math.max(0.35, 1-nearestLeftD/150) : 0;
+  var rightOp = nearestRightD<Infinity ? Math.max(0.35, 1-nearestRightD/150) : 0;
+  if(leftOp!==_lastRadarLeftOp){ radarLeftEl.style.opacity=leftOp; _lastRadarLeftOp=leftOp; }
+  if(rightOp!==_lastRadarRightOp){ radarRightEl.style.opacity=rightOp; _lastRadarRightOp=rightOp; }
 }
-function hideReticleRadar(){ reticleEl.style.opacity=0; radarLeftEl.style.opacity=0; radarRightEl.style.opacity=0; }
+function hideReticleRadar(){
+  reticleEl.style.opacity=0; radarLeftEl.style.opacity=0; radarRightEl.style.opacity=0;
+  _lastReticleVisible=false; _lastReticleLeft=null; _lastReticleTop=null;
+  _lastRadarLeftOp=0; _lastRadarRightOp=0;
+}
 
 function show(id){ document.getElementById(id).classList.remove('hidden'); }
 function hide(id){ document.getElementById(id).classList.add('hidden'); }
