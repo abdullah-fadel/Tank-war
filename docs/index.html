@@ -110,8 +110,20 @@
   .controls{ position:absolute; inset:0; z-index:11; pointer-events:none; }
 
   .pad-move{
-    position:absolute; left:16px; bottom:calc(env(safe-area-inset-bottom) + 20px);
-    display:flex; gap:12px;
+    position:absolute; left:16px; bottom:calc(env(safe-area-inset-bottom) + 14px);
+  }
+  .joystick-zone{
+    width:118px; height:118px; border-radius:50%; pointer-events:auto;
+    background:radial-gradient(circle at 35% 30%, rgba(255,255,255,.07), rgba(0,0,0,.38));
+    border:1px solid rgba(255,255,255,.18);
+    box-shadow:0 4px 14px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
+  }
+  .joystick-handle{
+    position:absolute; left:50%; top:50%; width:52px; height:52px; margin:-26px 0 0 -26px;
+    border-radius:50%;
+    background:linear-gradient(160deg,#4a5a3a,#232a18);
+    border:1px solid rgba(255,255,255,.22);
+    box-shadow:0 4px 10px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.12);
   }
   .pad-aim{
     position:absolute; left:190px; bottom:calc(env(safe-area-inset-bottom) + 20px);
@@ -233,9 +245,8 @@
 
 <!-- ===================== أزرار اللمس ===================== -->
 <div class="controls">
-  <div class="pad-move">
-    <div class="tbtn" id="btnLeft">◀</div>
-    <div class="tbtn" id="btnRight">▶</div>
+  <div class="pad-move joystick-zone" id="moveJoyZone" aria-label="التحرك يمين/يسار">
+    <div class="joystick-handle" id="moveJoyHandle"></div>
   </div>
   <div class="pad-aim">
     <div class="tbtn btn-aim" id="btnAimUp">▲</div>
@@ -255,7 +266,7 @@
     <div class="loading" id="loadingText">جارٍ تحميل المحرّك ثلاثي الأبعاد…</div>
     <button class="big-btn" id="startBtn" style="display:none">ابدأ المعركة</button>
     <div class="hint">
-      لمس: أزرار الحركة والتصويب والإطلاق على الشاشة.<br>
+      لمس: عصا التحكم للحركة يمين/يسار، وأزرار التصويب والإطلاق.<br>
       كيبورد: ← → للحركة · ↑ ↓ لزاوية المدفع · مسافة للإطلاق · S للقفز.<br>
       انتبه لعداد الذخيرة — المدفع يحتاج إعادة تلقيم بعد كل 6 طلقات.
     </div>
@@ -831,7 +842,7 @@ var casingGeo = new THREE.BoxGeometry(0.12,0.12,0.3);
 var casingMat = new THREE.MeshStandardMaterial({ color:0xC9A227, metalness:0.8, roughness:0.35 });
 function ejectCasing(pos, dirSign){
   var m = new THREE.Mesh(casingGeo, casingMat); m.position.copy(pos); scene.add(m);
-  casings.push({ mesh:m, vx:dirSign*-3-Math.random()*2, vy:4+Math.random()*2, vz:(Math.random()-0.5)*3, life:1.4, spin:(Math.random()-0.5)*10 });
+  casings.push({ mesh:m, vx:dirSign*-3-Math.random()*2, vy:4+Math.random()*2, vz:(Math.random()-0.5)*3, life:1.4, spin:(Math.random()-0.5)*10, landed:false });
   capPool(casings, 20);
 }
 function updateCasings(dt){
@@ -841,7 +852,10 @@ function updateCasings(dt){
     c.mesh.position.x += c.vx*dt; c.mesh.position.y += c.vy*dt; c.mesh.position.z += c.vz*dt;
     c.mesh.rotation.x += c.spin*dt; c.mesh.rotation.z += c.spin*0.7*dt;
     var gy = groundHeightAt(c.mesh.position.x);
-    if(c.mesh.position.y <= gy){ c.mesh.position.y = gy; c.vy = 0; c.vx *= 0.8; c.vz *= 0.8; }
+    if(c.mesh.position.y <= gy){
+      c.mesh.position.y = gy; c.vy = 0; c.vx *= 0.8; c.vz *= 0.8;
+      if(!c.landed){ c.landed = true; playSound('casing', worldPan(c.mesh.position.x)); }
+    }
     c.life -= dt;
     if(c.life<=0){ scene.remove(c.mesh); casings.splice(i,1); }
   }
@@ -868,7 +882,7 @@ function fireProjectile(muzzleObj, dir, fromPlayer, dmg, splash, tankRef){
     fromPlayer:fromPlayer, dmg:dmg, splash:splash||0, life:5
   });
   muzzleFlash(pos, dir);
-  playSound('fire');
+  playSound('fire', worldPan(pos.x));
   camShake = Math.max(camShake, fromPlayer?0.35:0.15);
   camFovPunch = Math.max(camFovPunch, fromPlayer?2:0.6);
 
@@ -882,10 +896,24 @@ function fireProjectile(muzzleObj, dir, fromPlayer, dmg, splash, tankRef){
 }
 
 /* ------------------------------------------------------------------ *
- *  7) الصوت — توليد برمجي عبر Web Audio API (مع صدى بسيط للانفجارات)
+ *  7) الصوت — توليد برمجي عبر Web Audio API (صدى، مؤثرات مطبقة، بانّ مكاني)
  * ------------------------------------------------------------------ */
-var audioCtx = null, masterGain = null, muted = false, engineOsc = null, engineGain = null;
+var audioCtx = null, masterGain = null, muted = false;
+var engineOsc = null, engineOsc2 = null, engineGain = null;
 var convolver = null, reverbGain = null;
+
+// تحويل موضع عالمي على المحور السيني إلى قيمة بانّ (-1 يسار .. 1 يمين) بالنسبة لموقع اللاعب/المستمع
+function worldPan(x){
+  return Math.max(-1, Math.min(1, (x - player.x) / 30));
+}
+function makePanner(pan){
+  if(!audioCtx || !audioCtx.createStereoPanner) return null;
+  var p = audioCtx.createStereoPanner();
+  p.pan.value = Math.max(-1, Math.min(1, pan));
+  p.connect(masterGain);
+  return p;
+}
+
 function makeImpulseResponse(duration, decay){
   var rate = audioCtx.sampleRate;
   var length = Math.floor(rate*duration);
@@ -906,12 +934,16 @@ function initAudio(){
     reverbGain = audioCtx.createGain(); reverbGain.gain.value = 0.5;
     convolver.connect(reverbGain); reverbGain.connect(masterGain);
 
-    // محرك الدبابة: مذبذب منخفض مع فلتر
+    // محرك الدبابة: مذبذبان متآلفان (يحاكيان شرارات أسطوانتين) عبر فلتر تمرير منخفض لصوت أعمق وأثقل
     engineOsc = audioCtx.createOscillator(); engineOsc.type='sawtooth'; engineOsc.frequency.value=42;
-    var ef = audioCtx.createBiquadFilter(); ef.type='lowpass'; ef.frequency.value=120;
+    engineOsc2 = audioCtx.createOscillator(); engineOsc2.type='square'; engineOsc2.frequency.value=42*1.5;
+    var osc2Gain = audioCtx.createGain(); osc2Gain.gain.value = 0.35;
+    var ef = audioCtx.createBiquadFilter(); ef.type='lowpass'; ef.frequency.value=140;
     engineGain = audioCtx.createGain(); engineGain.gain.value=0.0;
-    engineOsc.connect(ef); ef.connect(engineGain); engineGain.connect(masterGain);
-    engineOsc.start();
+    engineOsc.connect(ef);
+    engineOsc2.connect(osc2Gain); osc2Gain.connect(ef);
+    ef.connect(engineGain); engineGain.connect(masterGain);
+    engineOsc.start(); engineOsc2.start();
   }catch(e){ audioCtx = null; }
 }
 function noiseBuffer(dur){
@@ -921,32 +953,63 @@ function noiseBuffer(dur){
   for(var i=0;i<n;i++) d[i] = Math.random()*2-1;
   return buf;
 }
-function playSound(kind){
+function playSound(kind, pan, big){
   if(!audioCtx || muted) return;
   var t = audioCtx.currentTime;
+  var out = (pan!==undefined && makePanner(pan)) || masterGain;
+
   if(kind==='fire'){
+    // الطقّة الحادة عند خروج القذيفة
     var o = audioCtx.createOscillator(); o.type='square'; o.frequency.setValueAtTime(180,t); o.frequency.exponentialRampToValueAtTime(48,t+0.18);
     var g = audioCtx.createGain(); g.gain.setValueAtTime(0.5,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.25);
-    o.connect(g); g.connect(masterGain); o.start(t); o.stop(t+0.26);
+    o.connect(g); g.connect(out); o.start(t); o.stop(t+0.26);
     var ns=audioCtx.createBufferSource(); ns.buffer=noiseBuffer(0.15);
     var nf=audioCtx.createBiquadFilter(); nf.type='lowpass'; nf.frequency.value=800;
     var ng=audioCtx.createGain(); ng.gain.setValueAtTime(0.4,t); ng.gain.exponentialRampToValueAtTime(0.001,t+0.15);
-    ns.connect(nf); nf.connect(ng); ng.connect(masterGain); ns.start(t);
+    ns.connect(nf); nf.connect(ng); ng.connect(out); ns.start(t);
+    // دفعة باص عميقة تعطي دوي المدفع وزناً حقيقياً بدل صوت رفيع فقط
+    var thump = audioCtx.createOscillator(); thump.type='sine'; thump.frequency.setValueAtTime(90,t); thump.frequency.exponentialRampToValueAtTime(35,t+0.22);
+    var thumpGain = audioCtx.createGain(); thumpGain.gain.setValueAtTime(0.55,t); thumpGain.gain.exponentialRampToValueAtTime(0.001,t+0.3);
+    thump.connect(thumpGain); thumpGain.connect(out); thump.start(t); thump.stop(t+0.31);
   } else if(kind==='explosion'){
-    var ns2=audioCtx.createBufferSource(); ns2.buffer=noiseBuffer(0.6);
-    var nf2=audioCtx.createBiquadFilter(); nf2.type='lowpass'; nf2.frequency.setValueAtTime(1200,t); nf2.frequency.exponentialRampToValueAtTime(60,t+0.5);
-    var ng2=audioCtx.createGain(); ng2.gain.setValueAtTime(0.7,t); ng2.gain.exponentialRampToValueAtTime(0.001,t+0.6);
-    ns2.connect(nf2); nf2.connect(ng2); ng2.connect(masterGain);
+    var scale = big ? 1.4 : 1;
+    var dur = big ? 0.9 : 0.6;
+    var ns2=audioCtx.createBufferSource(); ns2.buffer=noiseBuffer(dur);
+    var nf2=audioCtx.createBiquadFilter(); nf2.type='lowpass'; nf2.frequency.setValueAtTime(1200,t); nf2.frequency.exponentialRampToValueAtTime(60,t+dur*0.85);
+    var ng2=audioCtx.createGain(); ng2.gain.setValueAtTime(0.7*scale,t); ng2.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    ns2.connect(nf2); nf2.connect(ng2); ng2.connect(out);
     if(convolver) ng2.connect(convolver);
     ns2.start(t);
+    // طقّة حادة لحظية (Transient) عند بداية الانفجار قبل الدويّ الطويل — تعطي إحساساً بصدمة الهواء
+    var crackNs = audioCtx.createBufferSource(); crackNs.buffer = noiseBuffer(0.08);
+    var crackHp = audioCtx.createBiquadFilter(); crackHp.type='highpass'; crackHp.frequency.value=1500;
+    var crackGain = audioCtx.createGain(); crackGain.gain.setValueAtTime(0.5*scale,t); crackGain.gain.exponentialRampToValueAtTime(0.001,t+0.08);
+    crackNs.connect(crackHp); crackHp.connect(crackGain); crackGain.connect(out); crackNs.start(t);
   } else if(kind==='hit'){
     var o2=audioCtx.createOscillator(); o2.type='triangle'; o2.frequency.setValueAtTime(520,t); o2.frequency.exponentialRampToValueAtTime(180,t+0.12);
     var g2=audioCtx.createGain(); g2.gain.setValueAtTime(0.3,t); g2.gain.exponentialRampToValueAtTime(0.001,t+0.15);
-    o2.connect(g2); g2.connect(masterGain); o2.start(t); o2.stop(t+0.16);
+    o2.connect(g2); g2.connect(out); o2.start(t); o2.stop(t+0.16);
   } else if(kind==='click'){
     var o3=audioCtx.createOscillator(); o3.type='sine'; o3.frequency.setValueAtTime(720,t);
     var g3=audioCtx.createGain(); g3.gain.setValueAtTime(0.22,t); g3.gain.exponentialRampToValueAtTime(0.001,t+0.08);
-    o3.connect(g3); g3.connect(masterGain); o3.start(t); o3.stop(t+0.09);
+    o3.connect(g3); g3.connect(out); o3.start(t); o3.stop(t+0.09);
+  } else if(kind==='reloadStart'){
+    // فتح المغلاق: نقرتان ميكانيكيتان متتاليتان
+    [0, 0.09].forEach(function(delay){
+      var o = audioCtx.createOscillator(); o.type='square'; o.frequency.setValueAtTime(300,t+delay);
+      var g = audioCtx.createGain(); g.gain.setValueAtTime(0.25,t+delay); g.gain.exponentialRampToValueAtTime(0.001,t+delay+0.05);
+      o.connect(g); g.connect(out); o.start(t+delay); o.stop(t+delay+0.06);
+    });
+  } else if(kind==='reloadDone'){
+    // إغلاق المغلاق: نقرة حادة واحدة (القذيفة استقرّت في الغرفة)
+    var o4 = audioCtx.createOscillator(); o4.type='square'; o4.frequency.setValueAtTime(420,t);
+    var g4 = audioCtx.createGain(); g4.gain.setValueAtTime(0.35,t); g4.gain.exponentialRampToValueAtTime(0.001,t+0.09);
+    o4.connect(g4); g4.connect(out); o4.start(t); o4.stop(t+0.1);
+  } else if(kind==='casing'){
+    // طقّة معدنية خفيفة جداً لسقوط الظرف الفارغ على الرمل
+    var o5 = audioCtx.createOscillator(); o5.type='triangle'; o5.frequency.setValueAtTime(900,t); o5.frequency.exponentialRampToValueAtTime(500,t+0.05);
+    var g5 = audioCtx.createGain(); g5.gain.setValueAtTime(0.06,t); g5.gain.exponentialRampToValueAtTime(0.001,t+0.06);
+    o5.connect(g5); g5.connect(out); o5.start(t); o5.stop(t+0.07);
   }
 }
 // موسيقى خلفية بسيطة (أربيجيو يتكرر)
@@ -971,7 +1034,7 @@ function updateMusic(dt){
  * ------------------------------------------------------------------ */
 var player = {
   tank: buildTank({ body:0x5a7a3a, turret:0x3d5427 }),
-  x:0, vy:0, onGround:true,
+  x:0, vx:0, vy:0, onGround:true,
   hp:100, maxHp:100, fuel:100, maxFuel:100,
   aim:0.35,           // زاوية المدفع (راديان)
   fireCd:0, dir:1,
@@ -1053,6 +1116,7 @@ function startStage(){
  *  9) الإدخال (لمس + كيبورد)
  * ------------------------------------------------------------------ */
 var keys = { left:false, right:false, up:false, down:false, fire:false, jump:false };
+var joyAxis = 0; // محور تناظري من -1 (يسار) إلى 1 (يمين)، يأتي من عصا التحكم اللمسية
 
 function bindHold(id, on){
   var el = document.getElementById(id);
@@ -1062,9 +1126,41 @@ function bindHold(id, on){
   el.addEventListener('pointercancel', set(false));
   el.addEventListener('pointerleave', set(false));
 }
-bindHold('btnLeft','left'); bindHold('btnRight','right');
 bindHold('btnAimUp','up'); bindHold('btnAimDown','down');
 bindHold('btnFire','fire'); bindHold('btnJump','jump');
+
+// عصا تحكم تناظرية للحركة يمين/يسار (تدعم اللمس المتعدد عبر Pointer Events)
+function bindJoystick(zoneId, handleId, onChange){
+  var zone = document.getElementById(zoneId);
+  var handle = document.getElementById(handleId);
+  var radius = 33, activeId = null, cx = 0, cy = 0;
+
+  function start(e){
+    var rect = zone.getBoundingClientRect();
+    cx = rect.left + rect.width/2; cy = rect.top + rect.height/2;
+    activeId = e.pointerId;
+    zone.setPointerCapture(activeId);
+    drag(e);
+  }
+  function drag(e){
+    if(e.pointerId !== activeId) return;
+    var dx = Math.max(-radius, Math.min(radius, e.clientX - cx));
+    handle.style.transform = 'translateX(' + dx + 'px)';
+    onChange(dx / radius);
+  }
+  function release(e){
+    if(e.pointerId !== activeId) return;
+    activeId = null;
+    handle.style.transform = 'translateX(0px)';
+    onChange(0);
+  }
+  zone.addEventListener('pointerdown', start);
+  zone.addEventListener('pointermove', drag);
+  zone.addEventListener('pointerup', release);
+  zone.addEventListener('pointercancel', release);
+  zone.addEventListener('pointerleave', release);
+}
+bindJoystick('moveJoyZone', 'moveJoyHandle', function(v){ joyAxis = v; });
 
 window.addEventListener('keydown', function(e){
   if(e.code==='ArrowLeft') keys.left=true;
@@ -1086,19 +1182,37 @@ window.addEventListener('keyup', function(e){
 /* ------------------------------------------------------------------ *
  *  10) تحديث اللعبة (المنطق)
  * ------------------------------------------------------------------ */
+var TANK_ACCEL = 22;  // تسارع الدبابة (م/ث²)
+var TANK_BRAKE = 36;  // كبح أسرع من التسارع — واقعي: تتوقف الدبابة أسرع مما تنطلق
 function updatePlayer(dt){
-  // الحركة الأفقية
-  var move = (keys.right?1:0) - (keys.left?1:0);
-  if(move!==0) player.dir = move>0?1:-1;
-  player.x += move * player.speed * dt;
+  // الحركة الأفقية: عصا اللمس تناظرية (-1..1)، ولوحة المفاتيح رقمية (±1) وتتفوّق عليها عند استخدامها.
+  // السرعة الفعلية لا تقفز فوراً بل تتسارع/تُكبح تدريجياً، لمحاكاة قصور دبابة حقيقية بدل حركة أزرار جامدة.
+  var throttle = (keys.left||keys.right) ? ((keys.right?1:0)-(keys.left?1:0)) : joyAxis;
+  var targetVx = throttle * player.speed;
+  var accelRate = Math.abs(targetVx) > Math.abs(player.vx) ? TANK_ACCEL : TANK_BRAKE;
+  var prevVx = player.vx;
+  var dv = targetVx - player.vx;
+  player.vx += Math.sign(dv) * Math.min(Math.abs(dv), accelRate*dt);
+
+  player.x += player.vx*dt;
   player.x = Math.max(-20, Math.min(GROUND_LEN/2-20, player.x));
+  if(Math.abs(player.vx) > 0.3) player.dir = player.vx>0?1:-1;
+
+  // ميلان بسيط لهيكل الدبابة بفعل القصور الذاتي: يميل للخلف عند التسارع الأمامي، وللأمام عند الكبح المفاجئ
+  var accelForTilt = (player.vx - prevVx) / Math.max(dt, 0.0001);
+  var targetTilt = Math.max(-0.08, Math.min(0.08, -accelForTilt*0.006));
+  player.tank.rotation.z += (targetTilt - player.tank.rotation.z) * Math.min(1, dt*6);
 
   // القفز البسيط
   var gy = groundHeightAt(player.x);
+  var wasAirborne = !player.onGround;
   if(keys.jump && player.onGround){ player.vy = 12; player.onGround=false; }
   player.vy += GRAVITY*dt;
   var py = player.tank.position.y + player.vy*dt;
-  if(py <= gy){ py = gy; player.vy=0; player.onGround=true; }
+  if(py <= gy){
+    if(wasAirborne && player.vy < -4) dustPuff(player.x, gy, 0); // غبار هبوط عند لمس الأرض بسرعة
+    py = gy; player.vy=0; player.onGround=true;
+  }
   player.tank.position.set(player.x, py, 0);
   player.tank.rotation.y = 0; // اللاعب يواجه اليمين دائماً (الأعداء يأتون من اليمين)
 
@@ -1108,29 +1222,29 @@ function updatePlayer(dt){
   player.tank.userData.barrelPivot.rotation.z = player.aim;
   updateTankRecoil(player.tank, dt);
 
-  // دوران العجلات + غبار + آثار جنزير + دخان العادم
-  if(move!==0){
-    player.tank.userData.wheels.forEach(function(w){ w.rotation.z -= move*dt*10; });
-    if(Math.random()<0.4) dustPuff(player.x - player.dir*2.4, gy, (Math.random()-0.5)*2 + 1.1*(Math.random()<0.5?1:-1));
-    if(Math.random()<0.5) spawnTread(player.x, gy, (Math.random()-0.5)*0.8);
-    if(engineGain) engineGain.gain.value += (0.16 - engineGain.gain.value)*0.1;
-  } else {
-    if(engineGain) engineGain.gain.value += (0.05 - engineGain.gain.value)*0.1;
+  // دوران العجلات + غبار + آثار جنزير + دخان العادم — تتناسب شدّتها مع السرعة الفعلية لا مجرد وجود إدخال
+  var speedFrac = Math.abs(player.vx) / player.speed;
+  player.tank.userData.wheels.forEach(function(w){ w.rotation.z -= player.vx*dt*2; });
+  if(speedFrac > 0.05){
+    if(Math.random() < 0.4*speedFrac) dustPuff(player.x - player.dir*2.4, gy, (Math.random()-0.5)*2 + 1.1*(Math.random()<0.5?1:-1));
+    if(Math.random() < 0.5*speedFrac) spawnTread(player.x, gy, (Math.random()-0.5)*0.8);
   }
-  if(engineOsc) engineOsc.frequency.value = 42 + Math.abs(move)*22;
+  if(engineGain) engineGain.gain.value += ((0.05 + speedFrac*0.14) - engineGain.gain.value)*0.1;
+  if(engineOsc) engineOsc.frequency.value = 42 + speedFrac*26;
+  if(engineOsc2) engineOsc2.frequency.value = (42 + speedFrac*26) * 1.503; // خامس موازٍ يعطي عمق ميكانيكي أكثر من نغمة واحدة
   if(Math.random()<0.05){
     var ep = new THREE.Vector3(); player.tank.userData.exhaustTip.getWorldPosition(ep);
     spawnParticle(ep.x, ep.y, ep.z, 0x3a3a30, 0.5+Math.random()*0.3, 0.6, (Math.random()-0.5)*0.6, 1+Math.random()*0.8, (Math.random()-0.5)*0.6, false);
   }
 
   // الوقود (يُستهلك بالحركة، يتجدد بالوقوف) — عنصر تجميلي
-  if(move!==0) player.fuel = Math.max(0, player.fuel - 4*dt);
+  if(speedFrac > 0.05) player.fuel = Math.max(0, player.fuel - 4*dt);
   else player.fuel = Math.min(player.maxFuel, player.fuel + 8*dt);
 
   // إعادة التلقيم
   if(player.reloading){
     player.reloadTimer -= dt;
-    if(player.reloadTimer<=0){ player.reloading=false; player.ammo=player.maxAmmo; }
+    if(player.reloadTimer<=0){ player.reloading=false; player.ammo=player.maxAmmo; playSound('reloadDone'); }
   }
 
   // الإطلاق
@@ -1140,7 +1254,7 @@ function updatePlayer(dt){
     player.ammo--;
     var dir = new THREE.Vector3(Math.cos(player.aim), Math.sin(player.aim), 0);
     fireProjectile(player.tank.userData.muzzle, dir, true, player.dmg, 3, player.tank);
-    if(player.ammo<=0){ player.reloading=true; player.reloadTimer=player.reloadTime; }
+    if(player.ammo<=0){ player.reloading=true; player.reloadTimer=player.reloadTime; playSound('reloadStart'); }
   }
 }
 
@@ -1214,7 +1328,7 @@ function updateEnemies(dt){
     if(e.hp<=0){
       var ep = e.tank.position;
       explosion(ep.x, ep.y+1.5, ep.z||0, e.isBoss);
-      playSound('explosion');
+      playSound('explosion', worldPan(ep.x), e.isBoss);
       camShake = Math.max(camShake, e.isBoss?1.0:0.5);
       score += e.scoreValue;
       coins += e.coinValue;
@@ -1259,7 +1373,7 @@ function updateProjectiles(dt){
         var ey = e.tank.position.y;
         if(Math.abs(p.mesh.position.x - e.x) < 2.2*e.scale && Math.abs(p.mesh.position.y - ey - 1.4*e.scale) < 3*e.scale){
           var applied = p.dmg * (1 - (e.armor||0));
-          e.hp -= applied; hit=true; playSound('hit'); showHitMarker();
+          e.hp -= applied; hit=true; playSound('hit', worldPan(e.x)); showHitMarker();
           spawnDamageText(e.x, ey + 3.6*e.scale + 0.7, e.tank.position.z||0, '-'+Math.round(applied), e.isHeli?'#8fd0ff':'#ffce6b');
           if(p.splash){ for(var k=0;k<enemies.length;k++){ if(k!==j && Math.abs(enemies[k].x - e.x)<p.splash) enemies[k].hp -= p.dmg*0.5*(1-(enemies[k].armor||0)); } }
           break;
@@ -1277,7 +1391,7 @@ function updateProjectiles(dt){
 
     if(p.mesh.position.y <= gy || hit || p.life<=0){
       explosion(p.mesh.position.x, Math.max(gy, p.mesh.position.y), p.mesh.position.z||0, false);
-      if(!hit) playSound('explosion');
+      if(!hit) playSound('explosion', worldPan(p.mesh.position.x));
       scene.remove(p.mesh); projectiles.splice(i,1);
     }
   }
