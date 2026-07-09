@@ -295,6 +295,7 @@
 
 <!-- ===================== Three.js من CDN ===================== -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script>
 /* =====================================================================
    Tank Assault 3D — لعبة حرب دبابات بمنظور جانبي (Three.js)
@@ -650,6 +651,50 @@ function updateTankRecoil(tank, dt){
     if(ud.barrel) ud.barrel.position.x = ud.barrelOrigX;
     if(ud.hull) ud.hull.position.y = ud.hullOrigY;
   }
+}
+
+// نموذج T-90A ثلاثي الأبعاد حقيقي لدبابة اللاعب (بدل الهيكل الإجرائي البسيط)
+// الشبكة مُصدَّرة كقطعة واحدة مدمجة (لا يمكن فصل الماسورة عن البرج حركياً)، لذا نُبقي الجسم
+// ثابتاً بصرياً وننشئ عقد تحكّم غير مرئية (barrelPivot/muzzle) في مكان الماسورة الحقيقي
+// تحافظ على نفس تعاقد userData الذي يعتمد عليه بقية الكود (التصويب، الارتداد، الإطلاق).
+var PLAYER_MODEL_URL = 'models/t90a.glb';
+function wrapLoadedTankModel(model){
+  var barrelPivot = new THREE.Group();
+  barrelPivot.position.set(0.17, 0.91, 0);
+  var muzzle = new THREE.Object3D();
+  muzzle.position.set(2.53, 0, 0);
+  barrelPivot.add(muzzle);
+
+  var turretRef = new THREE.Object3D();
+  turretRef.position.set(0.17, 1.6, 0);
+
+  var exhaustTip = new THREE.Object3D();
+  exhaustTip.position.set(-2.4, 0.75, 0.5);
+
+  model.traverse(function(o){ if(o.isMesh){ o.castShadow = true; o.receiveShadow = true; } });
+
+  var root = new THREE.Group();
+  root.add(model);
+  root.add(barrelPivot);
+  root.add(turretRef);
+  root.add(exhaustTip);
+
+  root.userData = {
+    turret: turretRef, barrelPivot: barrelPivot, muzzle: muzzle, wheels: [], scale: 1,
+    hull: model, hullOrigY: 0, barrel: null, barrelOrigX: 0,
+    turretMesh: null, exhaustTip: exhaustTip, recoilTimer: 0
+  };
+  return root;
+}
+function loadPlayerTankModel(onDone){
+  if(typeof THREE.GLTFLoader === 'undefined'){ onDone(null); return; }
+  var loader = new THREE.GLTFLoader();
+  loader.load(PLAYER_MODEL_URL, function(gltf){
+    onDone(wrapLoadedTankModel(gltf.scene));
+  }, undefined, function(err){
+    console.warn('[TankAssault] تعذّر تحميل نموذج الدبابة، سيُستخدم النموذج الإجرائي البديل.', err);
+    onDone(null);
+  });
 }
 
 /* ------------------------------------------------------------------ *
@@ -1627,9 +1672,19 @@ function loop(){
 }
 loop();
 
-// إظهار زر البدء بعد جهوزية كل شيء
-document.getElementById('loadingText').style.display='none';
-document.getElementById('startBtn').style.display='inline-block';
+// تحميل نموذج دبابة اللاعب الحقيقي (T-90A) واستبدال الهيكل الإجرائي المؤقت به عند الجهوزية،
+// ثم إظهار زر البدء — مع نموذج احتياطي إجرائي إن تعذّر تحميل الملف لأي سبب (لا تتعطّل اللعبة أبداً)
+loadPlayerTankModel(function(modelTank){
+  if(modelTank){
+    var pos = player.tank.position.clone();
+    scene.remove(player.tank);
+    player.tank = modelTank;
+    player.tank.position.copy(pos);
+    scene.add(player.tank);
+  }
+  document.getElementById('loadingText').style.display='none';
+  document.getElementById('startBtn').style.display='inline-block';
+});
 
 })();
 </script>
