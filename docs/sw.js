@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tank-assault-v3';
+const CACHE_NAME = 'tank-assault-v4';
 const APP_SHELL = [
   './',
   './index.html',
@@ -6,7 +6,9 @@ const APP_SHELL = [
   './models/t90a.glb',
   './models/t34.glb',
   './icons/icon-192.png',
-  './icons/icon-512.png'
+  './icons/icon-512.png',
+  './sfx/shell_explosion.mp3',
+  './sfx/tank_engine.mp3'
 ];
 
 self.addEventListener('install', function(event){
