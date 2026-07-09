@@ -117,6 +117,7 @@
     background:radial-gradient(circle at 35% 30%, rgba(255,255,255,.07), rgba(0,0,0,.38));
     border:1px solid rgba(255,255,255,.18);
     box-shadow:0 4px 14px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
+    touch-action:none; -ms-touch-action:none;
   }
   .joystick-handle{
     position:absolute; left:50%; top:50%; width:52px; height:52px; margin:-26px 0 0 -26px;
@@ -145,6 +146,7 @@
     box-shadow:0 4px 14px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
     transition:transform .07s ease, filter .07s ease;
     -webkit-user-select:none; user-select:none;
+    touch-action:none; -ms-touch-action:none;
   }
   .tbtn:active, .tbtn.on{ transform:scale(.9); filter:brightness(1.35); }
 
@@ -1181,6 +1183,7 @@ function bindJoystick(zoneId, handleId, onChange){
   var radius = 33, activeId = null, cx = 0, cy = 0;
 
   function start(e){
+    e.preventDefault();
     var rect = zone.getBoundingClientRect();
     cx = rect.left + rect.width/2; cy = rect.top + rect.height/2;
     activeId = e.pointerId;
@@ -1189,12 +1192,14 @@ function bindJoystick(zoneId, handleId, onChange){
   }
   function drag(e){
     if(e.pointerId !== activeId) return;
+    e.preventDefault();
     var dx = Math.max(-radius, Math.min(radius, e.clientX - cx));
     handle.style.transform = 'translateX(' + dx + 'px)';
     onChange(dx / radius);
   }
   function release(e){
     if(e.pointerId !== activeId) return;
+    e.preventDefault();
     activeId = null;
     handle.style.transform = 'translateX(0px)';
     onChange(0);
@@ -1259,12 +1264,15 @@ function updatePlayer(dt){
     py = gy; player.vy=0; player.onGround=true;
   }
   player.tank.position.set(player.x, py, 0);
-  player.tank.rotation.y = 0; // اللاعب يواجه اليمين دائماً (الأعداء يأتون من اليمين)
+  // الدبابة تستدير لتواجه اتجاه حركتها الفعلي (يمين أو يسار)، بدل البقاء ثابتة الاتجاه دائماً
+  player.tank.rotation.y = player.dir >= 0 ? 0 : Math.PI;
 
-  // زاوية المدفع
+  // زاوية المدفع (الارتفاع/الانخفاض). عند الاستدارة يسارًا 180° حول Y ينعكس محور Z محلياً،
+  // لذا نعكس إشارة الميل هنا لتبقى "لأعلى" تعني لأعلى فعلياً بصرف النظر عن اتجاه المواجهة
   if(keys.up) player.aim = Math.min(1.15, player.aim + 1.4*dt);
   if(keys.down) player.aim = Math.max(-0.15, player.aim - 1.4*dt);
-  player.tank.userData.barrelPivot.rotation.z = player.aim;
+  var facingSign = player.dir >= 0 ? 1 : -1;
+  player.tank.userData.barrelPivot.rotation.z = player.aim * facingSign;
   updateTankRecoil(player.tank, dt);
 
   // دوران العجلات + غبار + آثار جنزير + دخان العادم — تتناسب شدّتها مع السرعة الفعلية لا مجرد وجود إدخال
@@ -1297,7 +1305,7 @@ function updatePlayer(dt){
   if(keys.fire && player.fireCd<=0 && !player.reloading && player.ammo>0){
     player.fireCd = 0.5;
     player.ammo--;
-    var dir = new THREE.Vector3(Math.cos(player.aim), Math.sin(player.aim), 0);
+    var dir = new THREE.Vector3(Math.cos(player.aim) * facingSign, Math.sin(player.aim), 0);
     fireProjectile(player.tank.userData.muzzle, dir, true, player.dmg, 3, player.tank);
     if(player.ammo<=0){ player.reloading=true; player.reloadTimer=player.reloadTime; playSound('reloadStart'); }
   }
@@ -1536,7 +1544,8 @@ var _reticleTarget = new THREE.Vector3();
 var _lastReticleVisible=null, _lastReticleLeft=null, _lastReticleTop=null;
 function updateReticle(){
   player.tank.userData.muzzle.getWorldPosition(_reticleOrigin);
-  _reticleTarget.set(Math.cos(player.aim)*14, Math.sin(player.aim)*14, 0).add(_reticleOrigin);
+  var facingSign = player.dir >= 0 ? 1 : -1;
+  _reticleTarget.set(Math.cos(player.aim)*facingSign*14, Math.sin(player.aim)*14, 0).add(_reticleOrigin);
   _reticleTarget.project(camera);
 
   if(_reticleTarget.z>1 || _reticleTarget.z<-1){
