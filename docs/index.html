@@ -30,22 +30,22 @@
     box-shadow:0 6px 20px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
   }
 
-  .panel-left{ padding:10px 12px; min-width:160px; }
-  .hpbar-label{ font-size:10px; letter-spacing:.12em; color:#9aa08c; margin-bottom:4px; font-weight:700; }
-  .hpbar{ height:10px; border-radius:6px; background:rgba(0,0,0,.5); overflow:hidden; border:1px solid rgba(255,255,255,.1); }
-  .hpbar > i{ display:block; height:100%; width:100%; border-radius:5px; background:linear-gradient(90deg,#4f8f26,#8ecb45); transition:width .15s ease; }
-  .fuel-label{ margin-top:8px; }
+  .status-strip{ display:flex; align-items:center; gap:12px; padding:7px 12px; }
+  .status-item{ display:flex; align-items:center; gap:5px; position:relative; }
+  .status-ico{ font-size:12px; line-height:1; opacity:.85; }
+  .hpbar{ width:52px; height:8px; border-radius:5px; background:rgba(0,0,0,.5); overflow:hidden; border:1px solid rgba(255,255,255,.1); }
+  .hpbar > i{ display:block; height:100%; width:100%; border-radius:4px; background:linear-gradient(90deg,#4f8f26,#8ecb45); transition:width .15s ease; }
   .fuelbar > i{ background:linear-gradient(90deg,#b3790f,#ffb020); }
 
-  .ammo-row{ display:flex; gap:3px; margin-top:5px; }
-  .ammo-pip{ width:9px; height:14px; border-radius:2px; background:rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.25); }
+  .ammo-row{ display:flex; gap:2px; }
+  .ammo-pip{ width:6px; height:10px; border-radius:2px; background:rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.25); }
   .ammo-pip.loaded{ background:linear-gradient(180deg,#ffd27a,#ffb020); border-color:#c97e10; box-shadow:0 0 4px rgba(255,176,32,.5); }
-  .reload-label{ font-size:9px; letter-spacing:.1em; color:#ff8a4a; margin-top:4px; display:none; font-weight:700; }
+  .reload-label{ position:absolute; top:100%; right:0; margin-top:3px; font-size:8px; letter-spacing:.08em; color:#ff8a4a; white-space:nowrap; display:none; font-weight:700; }
   .reload-label.show{ display:block; }
 
-  .panel-right{ padding:10px 14px; text-align:left; }
-  .score-big{ font-size:22px; font-weight:800; color:#f0eddf; font-variant-numeric:tabular-nums; line-height:1; }
-  .score-sub{ font-size:11px; color:#ffb020; margin-top:3px; font-variant-numeric:tabular-nums; }
+  .panel-right{ padding:7px 12px; text-align:left; }
+  .score-big{ font-size:18px; font-weight:800; color:#f0eddf; font-variant-numeric:tabular-nums; line-height:1; }
+  .score-sub{ font-size:10px; color:#ffb020; margin-top:2px; font-variant-numeric:tabular-nums; }
 
   .stage-pill{
     position:absolute; top:calc(env(safe-area-inset-top) + 14px); left:50%; transform:translateX(-50%);
@@ -220,14 +220,12 @@
   <div class="stage-pill glass">المرحلة <b id="stageNum">1</b><span>·</span>الأعداء <b id="enemyCount">0</b></div>
 
   <div class="hud-top">
-    <div class="panel-left glass">
-      <div class="hpbar-label">الدرع / الصحة</div>
-      <div class="hpbar"><i id="hpFill"></i></div>
-      <div class="hpbar-label fuel-label">الوقود</div>
-      <div class="hpbar fuelbar"><i id="fuelFill"></i></div>
-      <div class="hpbar-label fuel-label">الذخيرة</div>
-      <div class="ammo-row" id="ammoRow"></div>
-      <div class="reload-label" id="reloadLabel">إعادة تلقيم…</div>
+    <div class="status-strip glass">
+      <div class="status-item" title="الدرع/الصحة"><span class="status-ico">🛡</span><div class="hpbar"><i id="hpFill"></i></div></div>
+      <div class="status-item" title="الوقود"><span class="status-ico">⛽</span><div class="hpbar fuelbar"><i id="fuelFill"></i></div></div>
+      <div class="status-item" title="الذخيرة"><span class="status-ico">●</span><div class="ammo-row" id="ammoRow"></div>
+        <div class="reload-label" id="reloadLabel">إعادة تلقيم…</div>
+      </div>
     </div>
     <div class="panel-right glass">
       <div class="score-big" id="scoreVal">0</div>
@@ -327,7 +325,7 @@ app.appendChild(renderer.domElement);
 
 // كاميرا Perspective بزاوية جانبية ثابتة (2.5D)
 var camera = new THREE.PerspectiveCamera(45, 1, 0.1, 600);
-var CAM_OFFSET = new THREE.Vector3(0, 9, 30); // إزاحة الكاميرا خلف/فوق الدبابة
+var CAM_OFFSET = new THREE.Vector3(0, 7, 22); // إزاحة الكاميرا خلف/فوق الدبابة (أقرب = دبابة أكبر على الشاشة)
 var camShake = 0; // شدة اهتزاز الكاميرا
 var camFovPunch = 0; // نبضة زووم خفيفة عند الإطلاق/الانفجار
 
