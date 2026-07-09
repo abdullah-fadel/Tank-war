@@ -1023,7 +1023,7 @@ function fireProjectile(muzzleObj, dir, fromPlayer, dmg, splash, tankRef){
     fromPlayer:fromPlayer, dmg:dmg, splash:splash||0, life:5
   });
   muzzleFlash(pos, dir);
-  playSound('fire', worldPan(pos.x));
+  playSound('fire', worldPan(pos.x), false, fromPlayer);
   camShake = Math.max(camShake, fromPlayer?0.35:0.15);
   camFovPunch = Math.max(camFovPunch, fromPlayer?2:0.6);
 
@@ -1042,7 +1042,9 @@ function fireProjectile(muzzleObj, dir, fromPlayer, dmg, splash, tankRef){
 var audioCtx = null, masterGain = null, muted = false;
 var engineOsc = null, engineOsc2 = null, engineGain = null, engineBufferSource = null;
 var convolver = null, reverbGain = null;
-var explosionBuffer = null; // عيّنة انفجار حقيقية (اختيارية) — تُستخدم بدل الانفجار الاصطناعي عند توفرها
+var explosionBuffer = null;   // عيّنة انفجار حقيقية (اختيارية) — تُستخدم بدل الانفجار الاصطناعي عند توفرها
+var playerFireBuffer = null;  // عيّنة إطلاق حقيقية لمدفع اللاعب — دويّ عميق مميّز عن صوت العدو وعن صوت الانفجار
+var enemyFireBuffer = null;   // عيّنة إطلاق حقيقية لمدفع العدو — طقّة أحدّ لتمييز مصدر النيران بالسمع
 
 // تحويل موضع عالمي على المحور السيني إلى قيمة بانّ (-1 يسار .. 1 يمين) بالنسبة لموقع اللاعب/المستمع
 function worldPan(x){
@@ -1070,6 +1072,8 @@ function makeImpulseResponse(duration, decay){
 // تحميل عيّنة صوتية حقيقية (ملف) وفكّها إلى AudioBuffer قابل للتشغيل — تُستدعى onDone(null) بهدوء عند الفشل
 var EXPLOSION_SOUND_URL = 'sfx/shell_explosion.mp3';
 var ENGINE_SOUND_URL = 'sfx/tank_engine.mp3';
+var PLAYER_FIRE_SOUND_URL = 'sfx/player_fire.mp3';
+var ENEMY_FIRE_SOUND_URL = 'sfx/enemy_fire.mp3';
 function loadSoundBuffer(url, onDone){
   fetch(url).then(function(r){ return r.arrayBuffer(); })
     .then(function(ab){ return audioCtx.decodeAudioData(ab); })
@@ -1106,8 +1110,11 @@ function initAudio(){
       engineBufferSource.connect(engineGain);
       engineBufferSource.start();
     });
-    // عيّنة انفجار حقيقية لصوت إطلاق/ارتطام القذيفة — تُستبدل تلقائياً بالانفجار الاصطناعي عند فشل التحميل
+    // عيّنة انفجار حقيقية لصوت ارتطام القذيفة — تُستبدل تلقائياً بالانفجار الاصطناعي عند فشل التحميل
     loadSoundBuffer(EXPLOSION_SOUND_URL, function(buf){ explosionBuffer = buf; });
+    // عيّنتا إطلاق حقيقيتان (مختلفتان عن صوت الانفجار تماماً): دويّ عميق للاعب، وطقّة أحدّ للعدو
+    loadSoundBuffer(PLAYER_FIRE_SOUND_URL, function(buf){ playerFireBuffer = buf; });
+    loadSoundBuffer(ENEMY_FIRE_SOUND_URL, function(buf){ enemyFireBuffer = buf; });
   }catch(e){ audioCtx = null; }
 }
 function noiseBuffer(dur){
@@ -1117,13 +1124,23 @@ function noiseBuffer(dur){
   for(var i=0;i<n;i++) d[i] = Math.random()*2-1;
   return buf;
 }
-function playSound(kind, pan, big){
+function playSound(kind, pan, big, fromPlayer){
   if(!audioCtx || muted) return;
   var t = audioCtx.currentTime;
   var out = (pan!==undefined && makePanner(pan)) || masterGain;
 
   if(kind==='fire'){
-    // الطقّة الحادة عند خروج القذيفة
+    // عيّنتا إطلاق حقيقيتان مختلفتان تماماً عن صوت الانفجار: دويّ عميق للاعب، وطقّة أحدّ للعدو
+    var fireBuffer = fromPlayer ? playerFireBuffer : enemyFireBuffer;
+    if(fireBuffer){
+      var fsrc = audioCtx.createBufferSource(); fsrc.buffer = fireBuffer;
+      fsrc.playbackRate.value = (fromPlayer ? 0.95 : 0.85) + Math.random()*0.08;
+      var fg = audioCtx.createGain(); fg.gain.setValueAtTime(fromPlayer?0.9:0.7,t); fg.gain.exponentialRampToValueAtTime(0.001,t+1.6);
+      fsrc.connect(fg); fg.connect(out);
+      if(convolver) fg.connect(convolver);
+      fsrc.start(t);
+    } else {
+    // الطقّة الحادة عند خروج القذيفة (نسخة اصطناعية احتياطية إن تعذّر تحميل العيّنة الحقيقية)
     var o = audioCtx.createOscillator(); o.type='square'; o.frequency.setValueAtTime(180,t); o.frequency.exponentialRampToValueAtTime(48,t+0.18);
     var g = audioCtx.createGain(); g.gain.setValueAtTime(0.5,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.25);
     o.connect(g); g.connect(out); o.start(t); o.stop(t+0.26);
@@ -1135,6 +1152,7 @@ function playSound(kind, pan, big){
     var thump = audioCtx.createOscillator(); thump.type='sine'; thump.frequency.setValueAtTime(90,t); thump.frequency.exponentialRampToValueAtTime(35,t+0.22);
     var thumpGain = audioCtx.createGain(); thumpGain.gain.setValueAtTime(0.55,t); thumpGain.gain.exponentialRampToValueAtTime(0.001,t+0.3);
     thump.connect(thumpGain); thumpGain.connect(out); thump.start(t); thump.stop(t+0.31);
+    }
   } else if(kind==='explosion'){
     var scale = big ? 1.4 : 1;
     if(explosionBuffer){

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tank-assault-v5';
+const CACHE_NAME = 'tank-assault-v6';
 const APP_SHELL = [
   './',
   './index.html',
@@ -8,7 +8,9 @@ const APP_SHELL = [
   './icons/icon-192.png',
   './icons/icon-512.png',
   './sfx/shell_explosion.mp3',
-  './sfx/tank_engine.mp3'
+  './sfx/tank_engine.mp3',
+  './sfx/player_fire.mp3',
+  './sfx/enemy_fire.mp3'
 ];
 
 self.addEventListener('install', function(event){
