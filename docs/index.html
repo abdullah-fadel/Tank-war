@@ -15,7 +15,7 @@
 <style>
   /* ===================== إعدادات عامة ===================== */
   *{ margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html,body{ width:100%; height:100%; overflow:hidden; background:#0a0d12; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,sans-serif; user-select:none; }
+  html,body{ width:100%; height:100%; height:100dvh; overflow:hidden; background:#0a0d12; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,sans-serif; user-select:none; }
   #app{ position:fixed; inset:0; }
   canvas{ display:block; touch-action:none; }
 
@@ -191,46 +191,48 @@
   /* ===================== الشاشات ===================== */
   .screen{
     position:absolute; inset:0; z-index:20;
-    display:flex; flex-direction:column; align-items:center; justify-content:center;
-    gap:18px; padding:30px; text-align:center;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; justify-content:safe center;
+    gap:10px; padding:10px; text-align:center;
     background:rgba(6,9,6,0.72);
     backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+    overflow-y:auto; /* يسمح بالتمرير إن زاد المحتوى عن ارتفاع الشاشة بدل قطعه واختفاء الأزرار */
   }
   .screen.hidden{ display:none; }
 
   .screen .card{
-    max-width:360px; width:100%;
-    padding:28px 24px;
-    display:flex; flex-direction:column; align-items:center; gap:14px;
+    max-width:360px; width:100%; max-height:100%;
+    padding:16px 20px;
+    display:flex; flex-direction:column; align-items:center; gap:8px;
   }
   .title{
     font-family:"Arial Narrow",Arial,sans-serif; font-weight:900;
-    font-size:34px; letter-spacing:.04em; color:#f0eddf; line-height:1;
+    font-size:26px; letter-spacing:.04em; color:#f0eddf; line-height:1;
     text-shadow:0 2px 0 #000, 0 0 26px rgba(255,176,32,.3);
   }
   .title.win{ color:#8ecb45; }
   .title.lose{ color:#e6483a; }
-  .subtitle{ font-size:13px; color:#9aa08c; line-height:1.6; }
-  .stats-line{ font-size:14px; color:#e8e6d9; font-variant-numeric:tabular-nums; }
+  .subtitle{ font-size:12px; color:#9aa08c; line-height:1.5; }
+  .stats-line{ font-size:13px; color:#e8e6d9; font-variant-numeric:tabular-nums; }
   .stats-line b{ color:#ffb020; }
 
   .big-btn{
     pointer-events:auto; cursor:pointer;
-    margin-top:6px; padding:15px 34px; border:none; border-radius:12px;
-    font-family:"Arial Narrow",Arial,sans-serif; font-weight:800; font-size:17px; letter-spacing:.05em;
+    position:sticky; bottom:0; margin-top:4px; padding:12px 30px; border:none; border-radius:12px;
+    font-family:"Arial Narrow",Arial,sans-serif; font-weight:800; font-size:15px; letter-spacing:.05em;
     color:#161a10; background:linear-gradient(180deg,#ffc23e,#f0a010);
     box-shadow:0 8px 22px rgba(255,176,32,0.35);
+    flex-shrink:0;
   }
   .big-btn:active{ transform:scale(.96); }
 
-  .upgrades{ display:flex; flex-direction:column; gap:10px; width:100%; margin-top:4px; }
+  .upgrades{ display:flex; flex-direction:column; gap:6px; width:100%; margin-top:2px; }
   .upg-row{
     display:flex; align-items:center; justify-content:space-between; gap:10px;
-    padding:10px 14px; pointer-events:auto; cursor:pointer;
+    padding:6px 12px; pointer-events:auto; cursor:pointer;
   }
-  .upg-row .u-name{ font-size:13px; color:#e8e6d9; font-weight:700; text-align:right; }
-  .upg-row .u-lvl{ font-size:11px; color:#9aa08c; }
-  .upg-row .u-cost{ font-size:13px; color:#ffb020; font-weight:800; white-space:nowrap; }
+  .upg-row .u-name{ font-size:12px; color:#e8e6d9; font-weight:700; text-align:right; }
+  .upg-row .u-lvl{ font-size:10px; color:#9aa08c; }
+  .upg-row .u-cost{ font-size:12px; color:#ffb020; font-weight:800; white-space:nowrap; }
   .upg-row.disabled{ opacity:.45; }
 
   .hint{ font-size:11px; color:#6d7460; margin-top:8px; line-height:1.7; }
@@ -777,11 +779,16 @@ function makeEnemyTank(opts){
   var tank = wrapLoadedEnemyModel(enemyTankTemplate.clone(true));
   tank.userData.scale = opts.scale;
   tank.scale.setScalar(opts.scale);
-  if(opts.tint != null){
-    tank.userData.hull.traverse(function(o){
-      if(o.isMesh){ o.material = o.material.clone(); o.material.color.setHex(opts.tint); }
-    });
-  }
+  // نستنسخ مواد كل دبابة عدو على حدة (بدل مشاركتها) لنتمكّن من تلوينها فردياً وإضاءتها عند الغضب (الزعيم)
+  var hullMaterials = [];
+  tank.userData.hull.traverse(function(o){
+    if(o.isMesh){
+      o.material = o.material.clone();
+      if(opts.tint != null) o.material.color.setHex(opts.tint);
+      hullMaterials.push(o.material);
+    }
+  });
+  tank.userData.hullMaterials = hullMaterials;
   return tank;
 }
 loadEnemyTankModel();
@@ -1230,10 +1237,10 @@ function spawnEnemy(isBoss){
   if(!isBoss && stage>=2 && Math.random()<0.25){ spawnHelicopter(); return; }
 
   var opts = isBoss
-    ? { body:0x8a1f1f, turret:0x5a1212, scale:1.9 }
+    ? { body:0x8a1f1f, turret:0x5a1212, scale:1.45, tint:0xb35a4a }
     : (Math.random()<0.35 ? { body:0x6d4a3a, turret:0x3a251c, scale:1.25, tint:0xcdb896 } : { body:0x8a3a34, turret:0x4a1c18, scale:1.0, tint:0xffffff });
-  // الزعيم يبقى بالهيكل الإجرائي المميّز (لون أحمر مهيب)؛ الدبابات العادية تستخدم نموذج T-34 الحقيقي إذا كان جاهزاً
-  var tank = isBoss ? buildTank(opts) : makeEnemyTank(opts);
+  // كل الأعداء (بما فيها الزعيم) يستخدمون نفس نموذج T-34 الحقيقي — بحجم/تلوين مختلف للزعيم بدل هيكل إجرائي مغاير الشكل
+  var tank = makeEnemyTank(opts);
   var ex = player.x + 55 + Math.random()*30;
   tank.rotation.y = Math.PI; // مواجهة اللاعب (يسار)
   scene.add(tank);
@@ -1245,7 +1252,7 @@ function spawnEnemy(isBoss){
     hpBar:hpBar, fireCd:1+Math.random()*1.5,
     speed: isBoss?4:(heavy?4:7), dmg: isBoss?18:(heavy?14:8),
     range: isBoss?42:34, isBoss:!!isBoss, isHeli:false, scale:opts.scale,
-    armor: isBoss?0.25:(heavy?0.15:0), enraged:false, fireCdMultiplier:1,
+    armor: isBoss?0.25:(heavy?0.15:0), enraged:false, fireCdMultiplier:1, jitterSeed:Math.random()*1000,
     scoreValue: isBoss?500:(heavy?40:20), coinValue: isBoss?60:(heavy?8:4), hpBarYOffset:0
   });
 }
@@ -1441,8 +1448,18 @@ var ENRAGE_EMISSIVE_COLOR = new THREE.Color(0xff2200);
 function updateGroundEnemy(e, dt){
   var gy = groundHeightAt(e.x);
   var d = e.x - player.x;
-  // الذكاء البسيط: يقترب حتى المدى ثم يتوقف ويطلق — بتسارع/كبح تدريجي بدل القفز المباشر للسرعة القصوى والتوقف المفاجئ
-  var targetVx = Math.abs(d) > e.range ? -Math.sign(d) * e.speed : 0;
+  var absD = Math.abs(d);
+  // ذكاء المطاردة: يتقدّم إن ابتعد اللاعب، يتراجع قليلاً إن اقترب أكثر من اللازم، ويناور جانبياً بخفة ضمن نطاق الاشتباك
+  // بدل التوقف الجامد الكامل — نفس فلسفة الحركة بالتسارع/الكبح التدريجي المستخدمة للاعب
+  var minRange = e.range * 0.45;
+  var targetVx;
+  if(absD > e.range){
+    targetVx = -Math.sign(d) * e.speed;
+  } else if(absD < minRange){
+    targetVx = Math.sign(d) * e.speed * 0.7;
+  } else {
+    targetVx = Math.sin(performance.now()*0.0009 + e.jitterSeed) * e.speed * 0.35;
+  }
   var accel = e.speed * (targetVx === 0 ? 3.2 : 2.4);
   e.vx += Math.max(-accel*dt, Math.min(accel*dt, targetVx - e.vx));
   e.x += e.vx*dt;
@@ -1452,7 +1469,12 @@ function updateGroundEnemy(e, dt){
   if(e.isBoss && !e.enraged && e.hp <= e.maxHp*0.3){
     e.enraged = true; e.fireCdMultiplier = 0.55;
   }
-  if(e.enraged && e.tank.userData.turretMesh){
+  if(e.enraged && e.tank.userData.hullMaterials){
+    var pulse = 0.35 + Math.sin(performance.now()*0.012)*0.3;
+    e.tank.userData.hullMaterials.forEach(function(m){
+      if(m.emissive){ m.emissive = ENRAGE_EMISSIVE_COLOR; m.emissiveIntensity = pulse; }
+    });
+  } else if(e.enraged && e.tank.userData.turretMesh){
     e.tank.userData.turretMesh.material.emissive = ENRAGE_EMISSIVE_COLOR;
     e.tank.userData.turretMesh.material.emissiveIntensity = 0.35 + Math.sin(performance.now()*0.012)*0.3;
   }
@@ -1754,13 +1776,13 @@ document.getElementById('startBtn').addEventListener('click', function(){
   hide('startScreen'); applyUpgrades(); startStage(); state='playing';
 });
 document.getElementById('retryBtn').addEventListener('click', function(){
-  playSound('click'); hide('gameOverScreen');
+  playSound('click'); hide('gameOverScreen'); enterImmersiveMode();
   stage=1; score=0; coins=0;
   upgrades.damage.lvl=0; upgrades.health.lvl=0; upgrades.speed.lvl=0; upgrades.reload.lvl=0; applyUpgrades();
   startStage(); state='playing';
 });
 document.getElementById('nextStageBtn').addEventListener('click', function(){
-  playSound('click'); hide('victoryScreen'); stage++; startStage(); state='playing';
+  playSound('click'); hide('victoryScreen'); enterImmersiveMode(); stage++; startStage(); state='playing';
 });
 document.getElementById('muteBtn').addEventListener('click', function(){
   muted=!muted; this.textContent = muted?'🔇':'🔊';
@@ -1792,14 +1814,20 @@ installBtn.addEventListener('click', function(){
 });
 window.addEventListener('appinstalled', function(){ installBtn.classList.remove('show'); });
 
-// حاول قفل الاتجاه أفقياً (يعمل غالباً فقط في وضع standalone/ملء الشاشة)
-function tryLockLandscape(){
-  if(screen.orientation && screen.orientation.lock){
-    screen.orientation.lock('landscape').catch(function(){});
-  }
+// وضع ملء الشاشة الحقيقي (يخفي شريط حالة النظام/عنوان المتصفح) + قفل الاتجاه أفقياً
+// قفل الاتجاه يتطلب عادةً ملء الشاشة أولاً في متصفحات الموبايل، لذا نطلب الاثنين معاً بنفس إيماءة المستخدم
+function enterImmersiveMode(){
+  var el = document.documentElement;
+  var reqFs = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
+  var fsResult = reqFs ? reqFs.call(el) : null;
+  Promise.resolve(fsResult).catch(function(){}).then(function(){
+    if(screen.orientation && screen.orientation.lock){
+      screen.orientation.lock('landscape').catch(function(){});
+    }
+  });
 }
-tryLockLandscape();
-document.addEventListener('click', tryLockLandscape, { once:true });
+document.getElementById('startBtn').addEventListener('click', enterImmersiveMode);
+document.addEventListener('click', enterImmersiveMode, { once:true });
 
 // شاشة "الرجاء تدوير جهازك" عند الوضع الرأسي على الموبايل
 var rotateOverlay = document.getElementById('rotateOverlay');
