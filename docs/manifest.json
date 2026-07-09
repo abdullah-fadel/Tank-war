@@ -1,0 +1,17 @@
+{
+  "name": "Tank Assault 3D — دبابة الصحراء",
+  "short_name": "Tank Assault",
+  "description": "لعبة معركة دبابات ثلاثية الأبعاد في الصحراء",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#0a0d12",
+  "theme_color": "#1a2410",
+  "dir": "rtl",
+  "lang": "ar",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

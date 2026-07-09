@@ -3,7 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1a2410">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tank Assault">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
 <title>Tank Assault 3D — دبابة الصحراء</title>
 <style>
   /* ===================== إعدادات عامة ===================== */
@@ -70,6 +77,25 @@
     display:flex; align-items:center; justify-content:center; font-size:18px; color:#e8e6d9;
     cursor:pointer;
   }
+
+  .install-btn{
+    position:absolute; top:calc(env(safe-area-inset-top) + 190px); right:14px;
+    width:40px; height:40px; border-radius:12px; pointer-events:auto;
+    display:none; align-items:center; justify-content:center; font-size:17px; color:#e8e6d9;
+    cursor:pointer;
+  }
+  .install-btn.show{ display:flex; }
+
+  /* ===================== شاشة تدوير الجهاز ===================== */
+  .rotate-overlay{
+    position:fixed; inset:0; z-index:999; background:#0a0d12;
+    display:none; align-items:center; justify-content:center; flex-direction:column; gap:16px;
+    text-align:center; padding:20px; color:#e8e6d9;
+  }
+  .rotate-overlay.show{ display:flex; }
+  .rotate-overlay .rotate-icon{ font-size:56px; animation:rotateHint 1.6s ease-in-out infinite; }
+  .rotate-overlay p{ font-size:15px; color:#c9c6b8; max-width:280px; line-height:1.6; }
+  @keyframes rotateHint{ 0%,100%{ transform:rotate(0deg); } 50%{ transform:rotate(-90deg); } }
 
   /* ===================== التصويب ومؤشرات المعركة ===================== */
   .reticle{
@@ -234,6 +260,12 @@
   </div>
 
   <div class="mute-btn glass" id="muteBtn">🔊</div>
+  <div class="install-btn glass" id="installBtn" title="تثبيت اللعبة">⬇</div>
+</div>
+
+<div class="rotate-overlay" id="rotateOverlay">
+  <div class="rotate-icon">📱</div>
+  <p>الرجاء تدوير جهازك إلى الوضع الأفقي للحصول على أفضل تجربة لعب</p>
 </div>
 
 <div class="damage-flash" id="dmgFlash"></div>
@@ -364,13 +396,12 @@ scene.add(hemi);
 var GROUND_LEN = 1200;
 var groundGeo = new THREE.PlaneGeometry(GROUND_LEN, 120, 200, 12);
 groundGeo.rotateX(-Math.PI/2);
-// إزاحة الرؤوس لعمل كثبان رملية ناعمة
+// إزاحة الرؤوس لعمل كثبان رملية ناعمة (بنفس صيغة groundHeightAt تماماً لتفادي أي تفاوت بين السطح المرئي والمنطقي)
 (function(){
   var pos = groundGeo.attributes.position;
   for(var i=0;i<pos.count;i++){
     var x = pos.getX(i), z = pos.getZ(i);
-    var h = Math.sin(x*0.05)*0.8 + Math.sin(x*0.013 + 1.7)*1.6 + Math.cos(z*0.08)*0.5;
-    pos.setY(i, h);
+    pos.setY(i, groundHeightAt(x, z));
   }
   groundGeo.computeVertexNormals();
 })();
@@ -403,8 +434,9 @@ var groundMat = new THREE.MeshStandardMaterial({ map:makeSandTexture(), color:0x
 var ground = new THREE.Mesh(groundGeo, groundMat);
 ground.receiveShadow = true;
 scene.add(ground);
-function groundHeightAt(x){ // ارتفاع الأرض التقريبي عند إحداثي x (لوضع الدبابات)
-  return Math.sin(x*0.05)*0.8 + Math.sin(x*0.013 + 1.7)*1.6;
+function groundHeightAt(x, z){ // ارتفاع الأرض الفعلي عند (x,z) — مطابق تماماً لصيغة إزاحة رؤوس شبكة الأرض
+  z = z || 0;
+  return Math.sin(x*0.05)*0.8 + Math.sin(x*0.013 + 1.7)*1.6 + Math.cos(z*0.08)*0.5;
 }
 
 // جبال خلفية (silhouette) للـ Parallax — مجموعة تتبع الكاميرا أفقياً
@@ -452,7 +484,8 @@ function spawnProp(){
   var m = new THREE.Mesh(isRock?rockGeo:bushGeo, isRock?rockMat:bushMat);
   var side = Math.random() < 0.5 ? -1 : 1;
   var x = nextPropX;
-  m.position.set(x, groundHeightAt(x), side*(4+Math.random()*11));
+  var propZ = side*(4+Math.random()*11);
+  m.position.set(x, groundHeightAt(x, propZ), propZ);
   m.scale.set(scale, isRock?scale*0.75:scale, scale);
   m.rotation.y = Math.random()*Math.PI*2;
   m.castShadow = true; m.receiveShadow = true;
@@ -751,7 +784,7 @@ function explosion(x,y,z, big){
     spawnParticle(x,y,z, 0x6b5a3a, 0.4, 0.7+Math.random()*0.5,
       Math.cos(a2)*sp2, Math.sin(a2)*sp2*0.6+5, (Math.random()-0.5)*sp2, false);
   }
-  var gy = groundHeightAt(x);
+  var gy = groundHeightAt(x, z);
   spawnShockwave(x, gy+0.05, z, big?7:4);
   spawnFlashLight(x, y+1.5, z, big?11:4, big?9:5);
   spawnScorch(x, gy+0.03, z, big?4.5:2.6);
@@ -896,7 +929,7 @@ function updateCasings(dt){
     c.vy += GRAVITY*dt;
     c.mesh.position.x += c.vx*dt; c.mesh.position.y += c.vy*dt; c.mesh.position.z += c.vz*dt;
     c.mesh.rotation.x += c.spin*dt; c.mesh.rotation.z += c.spin*0.7*dt;
-    var gy = groundHeightAt(c.mesh.position.x);
+    var gy = groundHeightAt(c.mesh.position.x, c.mesh.position.z);
     if(c.mesh.position.y <= gy){
       c.mesh.position.y = gy; c.vy = 0; c.vx *= 0.8; c.vz *= 0.8;
       if(!c.landed){ c.landed = true; playSound('casing', worldPan(c.mesh.position.x)); }
@@ -1415,7 +1448,7 @@ function updateProjectiles(dt){
       p.fromPlayer?0xffce6b:0xff7a5a, 0.5, 0.25, 0,0,0, true);
 
     var hit = false;
-    var gy = groundHeightAt(p.mesh.position.x);
+    var gy = groundHeightAt(p.mesh.position.x, p.mesh.position.z);
 
     if(p.fromPlayer){
       // إصابة الأعداء
@@ -1636,6 +1669,50 @@ document.getElementById('muteBtn').addEventListener('click', function(){
   if(masterGain) masterGain.gain.value = muted?0:0.6;
   if(!muted) playSound('click');
 });
+
+/* ------------------------------------------------------------------ *
+ *  12.5) PWA: تثبيت + عمل دون اتصال + قفل الاتجاه الأفقي
+ * ------------------------------------------------------------------ */
+if('serviceWorker' in navigator){
+  window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); });
+}
+
+var installBtn = document.getElementById('installBtn');
+var deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', function(e){
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  installBtn.classList.add('show');
+});
+installBtn.addEventListener('click', function(){
+  if(!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  deferredInstallPrompt.userChoice.finally(function(){
+    deferredInstallPrompt = null;
+    installBtn.classList.remove('show');
+  });
+});
+window.addEventListener('appinstalled', function(){ installBtn.classList.remove('show'); });
+
+// حاول قفل الاتجاه أفقياً (يعمل غالباً فقط في وضع standalone/ملء الشاشة)
+function tryLockLandscape(){
+  if(screen.orientation && screen.orientation.lock){
+    screen.orientation.lock('landscape').catch(function(){});
+  }
+}
+tryLockLandscape();
+document.addEventListener('click', tryLockLandscape, { once:true });
+
+// شاشة "الرجاء تدوير جهازك" عند الوضع الرأسي على الموبايل
+var rotateOverlay = document.getElementById('rotateOverlay');
+function checkOrientation(){
+  var isPortrait = window.innerHeight > window.innerWidth;
+  var isSmallScreen = Math.min(window.innerWidth, window.innerHeight) < 820;
+  rotateOverlay.classList.toggle('show', isPortrait && isSmallScreen);
+}
+window.addEventListener('resize', checkOrientation);
+window.addEventListener('orientationchange', checkOrientation);
+checkOrientation();
 
 /* ------------------------------------------------------------------ *
  *  13) حلقة اللعبة + التجاوب
