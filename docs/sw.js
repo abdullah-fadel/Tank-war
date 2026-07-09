@@ -1,9 +1,10 @@
-const CACHE_NAME = 'tank-assault-v2';
+const CACHE_NAME = 'tank-assault-v3';
 const APP_SHELL = [
   './',
   './index.html',
   './manifest.json',
   './models/t90a.glb',
+  './models/t34.glb',
   './icons/icon-192.png',
   './icons/icon-512.png'
 ];
@@ -24,16 +25,15 @@ self.addEventListener('activate', function(event){
   self.clients.claim();
 });
 
+// شبكة أولاً ثم ذاكرة تخزين مؤقت كاحتياط — يضمن ظهور آخر تحديث فوراً عند توفر الاتصال،
+// مع الحفاظ على إمكانية اللعب دون اتصال باستخدام آخر نسخة محفوظة
 self.addEventListener('fetch', function(event){
   if(event.request.method !== 'GET') return;
   event.respondWith(
-    caches.match(event.request).then(function(cached){
-      if(cached) return cached;
-      return fetch(event.request).then(function(response){
-        var copy = response.clone();
-        caches.open(CACHE_NAME).then(function(cache){ cache.put(event.request, copy); });
-        return response;
-      }).catch(function(){ return cached; });
-    })
+    fetch(event.request).then(function(response){
+      var copy = response.clone();
+      caches.open(CACHE_NAME).then(function(cache){ cache.put(event.request, copy); });
+      return response;
+    }).catch(function(){ return caches.match(event.request); })
   );
 });
