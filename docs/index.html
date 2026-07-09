@@ -663,6 +663,41 @@ function buildHelicopter(){
   return g;
 }
 
+// نموذج مروحية أباتشي AH-64D ثلاثي الأبعاد حقيقي (بدل الهيكل الإجرائي البسيط) — نفس مبدأ نماذج الدبابات:
+// شبكة مدمجة (المراوح جزء ثابت من الشبكة، لا تدور بصرياً)، مع عقدة تحكّم غير مرئية بموقع مدفع العيار 30مم الحقيقي
+var HELI_MODEL_URL = 'models/apache.glb';
+var heliTemplate = null;
+function wrapLoadedHeliModel(model){
+  var muzzle = new THREE.Object3D();
+  muzzle.position.set(1.84, -0.58, 0.02);
+  model.add(muzzle);
+
+  var root = new THREE.Group();
+  root.add(model);
+
+  root.userData = {
+    rotor:null, rotor2:null, tailRotor:null, muzzle:muzzle, wheels:[], scale:1,
+    hull:model, hullOrigY:0, barrel:null, barrelOrigX:0,
+    turretMesh:null, exhaustTip:null, recoilTimer:0
+  };
+  return root;
+}
+function loadHeliModel(){
+  if(typeof THREE.GLTFLoader === 'undefined') return;
+  var loader = new THREE.GLTFLoader();
+  loader.load(HELI_MODEL_URL, function(gltf){
+    gltf.scene.traverse(function(o){ if(o.isMesh){ o.castShadow = true; o.receiveShadow = true; } });
+    heliTemplate = gltf.scene;
+  }, undefined, function(err){
+    console.warn('[TankAssault] تعذّر تحميل نموذج المروحية، سيُستخدم النموذج الإجرائي البديل.', err);
+  });
+}
+function makeHeliTank(){
+  if(!heliTemplate) return buildHelicopter();
+  return wrapLoadedHeliModel(heliTemplate.clone(true));
+}
+loadHeliModel();
+
 // شريط صحة ثلاثي الأبعاد يطفو فوق الوحدة
 function makeHealthBar(){
   var g = new THREE.Group();
@@ -1236,6 +1271,10 @@ var player = {
 scene.add(player.tank);
 
 var enemies = [];      // {tank, x, hp, maxHp, hpBar, fireCd, speed, dmg, range, isBoss, isHeli}
+// حدّ أدنى للفاصل الزمني بين أي طلقتين لأي دبابات عدو مجتمعة — يمنع تراكب أصوات الإطلاق وتحوّلها لضجيج رتيب
+// عند اشتباك عدة دبابات في نفس اللحظة تقريباً (بدل أن يطلق الجميع بإيقاع سريع متزامن)
+var ENEMY_FIRE_GAP_MS = 260;
+var lastEnemyFireTime = -99999;
 var state = 'menu';    // menu | playing | transition | over | victory
 var stage = 1;
 var score = 0, coins = 0;
@@ -1270,13 +1309,13 @@ function spawnEnemy(isBoss){
     hpBar:hpBar, fireCd:1+Math.random()*1.5,
     speed: isBoss?4:(heavy?4:7), dmg: isBoss?18:(heavy?14:8),
     range: isBoss?42:34, isBoss:!!isBoss, isHeli:false, scale:opts.scale,
-    armor: isBoss?0.25:(heavy?0.15:0), enraged:false, fireCdMultiplier:1, jitterSeed:Math.random()*1000,
+    armor: isBoss?0.25:(heavy?0.15:0), enraged:false, fireCdMultiplier:1, jitterSeed:Math.random()*1000, facingDir:-1,
     scoreValue: isBoss?500:(heavy?40:20), coinValue: isBoss?60:(heavy?8:4), hpBarYOffset:0
   });
 }
 
 function spawnHelicopter(){
-  var tank = buildHelicopter();
+  var tank = makeHeliTank();
   var ex = player.x + 55 + Math.random()*30;
   var hoverY = 9 + Math.random()*3;
   tank.position.set(ex, hoverY, 0);
@@ -1413,12 +1452,13 @@ function updatePlayer(dt){
   // الدبابة تستدير لتواجه اتجاه حركتها الفعلي (يمين أو يسار)، بدل البقاء ثابتة الاتجاه دائماً
   player.tank.rotation.y = player.dir >= 0 ? 0 : Math.PI;
 
-  // زاوية المدفع (الارتفاع/الانخفاض). عند الاستدارة يسارًا 180° حول Y ينعكس محور Z محلياً،
-  // لذا نعكس إشارة الميل هنا لتبقى "لأعلى" تعني لأعلى فعلياً بصرف النظر عن اتجاه المواجهة
+  // زاوية المدفع (الارتفاع/الانخفاض). عند الاستدارة يسارًا 180° حول Y، دوران الماسورة المحلي حول Z
+  // يبقى دون عكس إشارة — الدوران الأصلي للهيكل الأب هو ما يعكس المحور السيني تلقائياً، فتبقى "لأعلى" لأعلى فعلياً
+  // (عكس الإشارة هنا سابقاً كان الخلل الذي يمنع رفع الماسورة نحو السماء أثناء المواجهة يساراً)
   if(keys.up) player.aim = Math.min(1.15, player.aim + 1.4*dt);
   if(keys.down) player.aim = Math.max(-0.15, player.aim - 1.4*dt);
   var facingSign = player.dir >= 0 ? 1 : -1;
-  player.tank.userData.barrelPivot.rotation.z = player.aim * facingSign;
+  player.tank.userData.barrelPivot.rotation.z = player.aim;
   updateTankRecoil(player.tank, dt);
 
   // دوران العجلات + غبار + آثار جنزير + دخان العادم — تتناسب شدّتها مع السرعة الفعلية لا مجرد وجود إدخال
@@ -1467,6 +1507,12 @@ function updateGroundEnemy(e, dt){
   var gy = groundHeightAt(e.x);
   var d = e.x - player.x;
   var absD = Math.abs(d);
+
+  // اتجاه المواجهة الفعلي: يواجه العدو جهة اللاعب دائماً (يميناً إن كان اللاعب على يمينه، يساراً إن كان على يساره)
+  // بدل الاتجاه الثابت المفروض عند الاستدعاء فقط، مع تأخير بسيط (Hysteresis) يمنع اهتزاز الاتجاه عند التقاطع
+  if(absD > 1.2){ e.facingDir = (player.x >= e.x) ? 1 : -1; }
+  e.tank.rotation.y = e.facingDir >= 0 ? 0 : Math.PI;
+
   // ذكاء المطاردة: يتقدّم إن ابتعد اللاعب، يتراجع قليلاً إن اقترب أكثر من اللازم، ويناور جانبياً بخفة ضمن نطاق الاشتباك
   // بدل التوقف الجامد الكامل — نفس فلسفة الحركة بالتسارع/الكبح التدريجي المستخدمة للاعب
   var minRange = e.range * 0.45;
@@ -1497,19 +1543,25 @@ function updateGroundEnemy(e, dt){
     e.tank.userData.turretMesh.material.emissiveIntensity = 0.35 + Math.sin(performance.now()*0.012)*0.3;
   }
 
-  // توجيه البرج نحو اللاعب (زاوية مقذوف تقريبية) بتصويب سلس (Lerp) بدل القفز الفوري للزاوية المستهدفة
+  // توجيه البرج نحو اللاعب (زاوية الارتفاع فوق الأفقي) بتصويب سلس (Lerp) بدل القفز الفوري للزاوية المستهدفة.
+  // لا حاجة لعكس الإشارة حسب جهة المواجهة — دوران الهيكل الأب (rotation.y) يتكفّل بعكس المحور السيني تلقائياً
+  // (نفس الخلل الذي كان يمنع اللاعب من رفع الماسورة يساراً، مُصحَّح هنا بنفس المبدأ لدبابات العدو)
   var bp = e.tank.userData.barrelPivot;
-  var aimAng = 0.35 + Math.min(0.5, Math.abs(d)/120);
-  var targetRot = -aimAng; // معكوسة لأن الدبابة مقلوبة (تواجه اليسار)
-  bp.rotation.z += (targetRot - bp.rotation.z) * Math.min(1, dt*4.5);
+  var aimAng = 0.35 + Math.min(0.5, absD/120);
+  bp.rotation.z += (aimAng - bp.rotation.z) * Math.min(1, dt*4.5);
 
-  // الإطلاق على اللاعب — يعتمد اتجاه القذيفة على زاوية الماسورة الفعلية الحالية (بعد التصويب السلس) لا الزاوية المثالية
+  // الإطلاق على اللاعب — الاتجاه الأفقي يتبع جهة المواجهة الفعلية فيصيب اللاعب سواء كان يميناً أو يساراً.
+  // حدّ زمني عام مشترك بين كل دبابات العدو (ENEMY_FIRE_GAP_MS) يمنع تراكب طلقات عدة دبابات بنفس اللحظة تقريباً
   e.fireCd -= dt;
-  if(e.fireCd<=0 && Math.abs(d) < e.range+6){
-    e.fireCd = (e.isBoss?0.9:(1.4+Math.random())) * e.fireCdMultiplier;
-    var curAng = -bp.rotation.z;
-    var dir = new THREE.Vector3(-Math.cos(curAng), Math.sin(curAng), 0); // نحو اليسار وللأعلى
-    fireProjectile(e.tank.userData.muzzle, dir, false, e.dmg, 0, e.tank);
+  if(e.fireCd<=0 && absD < e.range+6){
+    var now = performance.now();
+    if(now - lastEnemyFireTime >= ENEMY_FIRE_GAP_MS){
+      lastEnemyFireTime = now;
+      e.fireCd = (e.isBoss?1.1:(2.0+Math.random()*1.8)) * e.fireCdMultiplier;
+      var curAng = bp.rotation.z;
+      var dir = new THREE.Vector3(Math.cos(curAng) * e.facingDir, Math.sin(curAng), 0);
+      fireProjectile(e.tank.userData.muzzle, dir, false, e.dmg, 0, e.tank);
+    }
   }
 }
 
@@ -1521,9 +1573,10 @@ function updateHelicopter(e, dt){
   var hoverY = e.hoverY + Math.sin(e.phase*1.4)*0.6;
   var z = Math.sin(e.phase*0.5)*2;
   e.tank.position.set(e.x, hoverY, z);
-  e.tank.userData.rotor.rotation.y += dt*40;
-  e.tank.userData.rotor2.rotation.y += dt*40;
-  e.tank.userData.tailRotor.rotation.x += dt*50;
+  // دوران المراوح (للنموذج الإجرائي البديل فقط — النموذج الحقيقي مُصدَّر كشبكة واحدة مدمجة بلا مراوح منفصلة)
+  if(e.tank.userData.rotor) e.tank.userData.rotor.rotation.y += dt*40;
+  if(e.tank.userData.rotor2) e.tank.userData.rotor2.rotation.y += dt*40;
+  if(e.tank.userData.tailRotor) e.tank.userData.tailRotor.rotation.x += dt*50;
 
   e.fireCd -= dt;
   if(e.fireCd<=0 && Math.abs(d) < 26){
