@@ -37,8 +37,15 @@
     box-shadow:0 6px 20px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
   }
 
-  .status-strip{ display:flex; align-items:center; gap:12px; padding:7px 12px; }
+  .status-strip{ display:flex; align-items:center; gap:8px; padding:7px 10px; }
+  .status-toggle{
+    width:22px; height:22px; flex-shrink:0; pointer-events:auto; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; font-size:12px; color:#c9c6b8;
+  }
+  .status-content{ display:flex; align-items:center; gap:12px; }
+  .status-strip.collapsed .status-content{ display:none; }
   .status-item{ display:flex; align-items:center; gap:5px; position:relative; }
+  .status-item.status-mute{ pointer-events:auto; cursor:pointer; font-size:15px; }
   .status-ico{ font-size:12px; line-height:1; opacity:.85; }
   .hpbar{ width:52px; height:8px; border-radius:5px; background:rgba(0,0,0,.5); overflow:hidden; border:1px solid rgba(255,255,255,.1); }
   .hpbar > i{ display:block; height:100%; width:100%; border-radius:4px; background:linear-gradient(90deg,#4f8f26,#8ecb45); transition:width .15s ease; }
@@ -71,15 +78,8 @@
     opacity:0; transition:opacity .4s ease;
   }
 
-  .mute-btn{
-    position:absolute; top:calc(env(safe-area-inset-top) + 140px); right:14px;
-    width:40px; height:40px; border-radius:12px; pointer-events:auto;
-    display:flex; align-items:center; justify-content:center; font-size:18px; color:#e8e6d9;
-    cursor:pointer;
-  }
-
   .install-btn{
-    position:absolute; top:calc(env(safe-area-inset-top) + 190px); right:14px;
+    position:absolute; top:calc(env(safe-area-inset-top) + 140px); right:14px;
     width:40px; height:40px; border-radius:12px; pointer-events:auto;
     display:none; align-items:center; justify-content:center; font-size:17px; color:#e8e6d9;
     cursor:pointer;
@@ -248,11 +248,15 @@
   <div class="stage-pill glass">المرحلة <b id="stageNum">1</b><span>·</span>الأعداء <b id="enemyCount">0</b></div>
 
   <div class="hud-top">
-    <div class="status-strip glass">
-      <div class="status-item" title="الدرع/الصحة"><span class="status-ico">🛡</span><div class="hpbar"><i id="hpFill"></i></div></div>
-      <div class="status-item" title="الوقود"><span class="status-ico">⛽</span><div class="hpbar fuelbar"><i id="fuelFill"></i></div></div>
-      <div class="status-item" title="الذخيرة"><span class="status-ico">●</span><div class="ammo-row" id="ammoRow"></div>
-        <div class="reload-label" id="reloadLabel">إعادة تلقيم…</div>
+    <div class="status-strip glass" id="statusStrip">
+      <div class="status-toggle" id="statusToggle" title="إظهار/إخفاء المؤشرات">▾</div>
+      <div class="status-content" id="statusContent">
+        <div class="status-item" title="الدرع/الصحة"><span class="status-ico">🛡</span><div class="hpbar"><i id="hpFill"></i></div></div>
+        <div class="status-item" title="الوقود"><span class="status-ico">⛽</span><div class="hpbar fuelbar"><i id="fuelFill"></i></div></div>
+        <div class="status-item" title="الذخيرة"><span class="status-ico">●</span><div class="ammo-row" id="ammoRow"></div>
+          <div class="reload-label" id="reloadLabel">إعادة تلقيم…</div>
+        </div>
+        <div class="status-item status-mute" id="muteBtn" title="الصوت">🔊</div>
       </div>
     </div>
     <div class="panel-right glass">
@@ -261,7 +265,6 @@
     </div>
   </div>
 
-  <div class="mute-btn glass" id="muteBtn">🔊</div>
   <div class="install-btn glass" id="installBtn" title="تثبيت اللعبة">⬇</div>
 </div>
 
@@ -1041,6 +1044,17 @@ function updateCasings(dt){
  *  6) القذائف بفيزياء مقذوفات (Projectile + Gravity + Trail)
  * ------------------------------------------------------------------ */
 var GRAVITY = -26;
+// يحسب زاوية الارتفاع (راديان) اللازمة فعلياً لإصابة هدف على مسافة أفقية x وفرق ارتفاع y بسرعة مقذوف v تحت الجاذبية g
+// (المسار المباشر الأكثر انبساطاً، وليس القوس العالي) — يُستخدم لتصويب دبابات ومروحيات العدو نحو اللاعب فعلياً
+// بدل هيكل ثابت يجعل الماسورة تبدو موجّهة للأعلى دوماً بلا علاقة حقيقية بموقع الهدف
+function computeBallisticAngle(x, y, v, g){
+  x = Math.max(0.6, x);
+  var v2 = v*v;
+  var disc = v2*v2 - g*(g*x*x + 2*y*v2);
+  if(disc < 0) return 1.1; // الهدف خارج مدى هذه السرعة/الجاذبية — صوّب لأعلى قدر الإمكان بدل الانهيار
+  var theta = Math.atan2(v2 - Math.sqrt(disc), g*x);
+  return Math.max(-1.3, Math.min(1.15, theta));
+}
 var projectiles = []; // {mesh, vel, fromPlayer, dmg, splash, life}
 var projGeo = new THREE.SphereGeometry(0.35, 8, 8);
 var projMatP = new THREE.MeshStandardMaterial({ color:0xffcf6b, emissive:0xff8a00, emissiveIntensity:0.8, roughness:0.4 });
@@ -1080,6 +1094,8 @@ var convolver = null, reverbGain = null;
 var explosionBuffer = null;   // عيّنة انفجار حقيقية (اختيارية) — تُستخدم بدل الانفجار الاصطناعي عند توفرها
 var playerFireBuffer = null;  // عيّنة إطلاق حقيقية لمدفع اللاعب — دويّ عميق مميّز عن صوت العدو وعن صوت الانفجار
 var enemyFireBuffer = null;   // عيّنة إطلاق حقيقية لمدفع العدو — طقّة أحدّ لتمييز مصدر النيران بالسمع
+var reloadBuffer = null;      // عيّنة إعادة تلقيم حقيقية
+var heliEngineBuffer = null;  // حلقة صوت طيران المروحية الحقيقية (تُستنسخ لكل مروحية تظهر)
 
 // تحويل موضع عالمي على المحور السيني إلى قيمة بانّ (-1 يسار .. 1 يمين) بالنسبة لموقع اللاعب/المستمع
 function worldPan(x){
@@ -1109,6 +1125,8 @@ var EXPLOSION_SOUND_URL = 'sfx/shell_explosion.mp3';
 var ENGINE_SOUND_URL = 'sfx/tank_engine.mp3';
 var PLAYER_FIRE_SOUND_URL = 'sfx/player_fire.mp3';
 var ENEMY_FIRE_SOUND_URL = 'sfx/enemy_fire.mp3';
+var RELOAD_SOUND_URL = 'sfx/reload.mp3';
+var HELI_ENGINE_SOUND_URL = 'sfx/heli_engine.mp3';
 function loadSoundBuffer(url, onDone){
   fetch(url).then(function(r){ return r.arrayBuffer(); })
     .then(function(ab){ return audioCtx.decodeAudioData(ab); })
@@ -1125,6 +1143,21 @@ function startProceduralEngineFallback(){
   engineOsc2.connect(osc2Gain); osc2Gain.connect(ef);
   ef.connect(engineGain);
   engineOsc.start(); engineOsc2.start();
+}
+// حلقة صوت طيران مستمرة لكل مروحية على حدة (بانّ مكاني خاص بها يُحدَّث كل إطار حسب موقعها)
+function startHeliEngineSound(){
+  if(!audioCtx || !heliEngineBuffer) return null;
+  var gain = audioCtx.createGain(); gain.gain.value = 0.45;
+  var panner = audioCtx.createStereoPanner ? audioCtx.createStereoPanner() : null;
+  var src = audioCtx.createBufferSource(); src.buffer = heliEngineBuffer; src.loop = true;
+  src.connect(gain);
+  if(panner){ gain.connect(panner); panner.connect(masterGain); } else { gain.connect(masterGain); }
+  src.start();
+  return { source:src, gain:gain, panner:panner };
+}
+function stopHeliEngineSound(handle){
+  if(!handle) return;
+  try{ handle.source.stop(); }catch(e){}
 }
 function initAudio(){
   if(audioCtx) return;
@@ -1150,6 +1183,10 @@ function initAudio(){
     // عيّنتا إطلاق حقيقيتان (مختلفتان عن صوت الانفجار تماماً): دويّ عميق للاعب، وطقّة أحدّ للعدو
     loadSoundBuffer(PLAYER_FIRE_SOUND_URL, function(buf){ playerFireBuffer = buf; });
     loadSoundBuffer(ENEMY_FIRE_SOUND_URL, function(buf){ enemyFireBuffer = buf; });
+    // عيّنة إعادة تلقيم حقيقية
+    loadSoundBuffer(RELOAD_SOUND_URL, function(buf){ reloadBuffer = buf; });
+    // حلقة صوت طيران المروحية الحقيقية (تُستنسخ لكل مروحية تظهر لاحقاً)
+    loadSoundBuffer(HELI_ENGINE_SOUND_URL, function(buf){ heliEngineBuffer = buf; });
   }catch(e){ audioCtx = null; }
 }
 function noiseBuffer(dur){
@@ -1221,12 +1258,19 @@ function playSound(kind, pan, big, fromPlayer){
     var g3=audioCtx.createGain(); g3.gain.setValueAtTime(0.22,t); g3.gain.exponentialRampToValueAtTime(0.001,t+0.08);
     o3.connect(g3); g3.connect(out); o3.start(t); o3.stop(t+0.09);
   } else if(kind==='reloadStart'){
-    // فتح المغلاق: نقرتان ميكانيكيتان متتاليتان
+    if(reloadBuffer){
+      // عيّنة إعادة تلقيم حقيقية تغطي كامل حركة إعادة التلقيم بدل النقرتين الاصطناعيتين
+      var rsrc = audioCtx.createBufferSource(); rsrc.buffer = reloadBuffer;
+      var rg = audioCtx.createGain(); rg.gain.value = 0.8;
+      rsrc.connect(rg); rg.connect(out); rsrc.start(t);
+    } else {
+    // فتح المغلاق: نقرتان ميكانيكيتان متتاليتان (نسخة اصطناعية احتياطية إن تعذّر تحميل العيّنة الحقيقية)
     [0, 0.09].forEach(function(delay){
       var o = audioCtx.createOscillator(); o.type='square'; o.frequency.setValueAtTime(300,t+delay);
       var g = audioCtx.createGain(); g.gain.setValueAtTime(0.25,t+delay); g.gain.exponentialRampToValueAtTime(0.001,t+delay+0.05);
       o.connect(g); g.connect(out); o.start(t+delay); o.stop(t+delay+0.06);
     });
+    }
   } else if(kind==='reloadDone'){
     // إغلاق المغلاق: نقرة حادة واحدة (القذيفة استقرّت في الغرفة)
     var o4 = audioCtx.createOscillator(); o4.type='square'; o4.frequency.setValueAtTime(420,t);
@@ -1319,19 +1363,20 @@ function spawnHelicopter(){
   var ex = player.x + 55 + Math.random()*30;
   var hoverY = 9 + Math.random()*3;
   tank.position.set(ex, hoverY, 0);
+  tank.rotation.y = Math.PI; // تظهر مواجهة اللاعب (يساراً) عند أول ظهور، مطابقةً لبقية أعداء المرحلة
   scene.add(tank);
   var hpBar = makeHealthBar(); scene.add(hpBar);
   enemies.push({
     tank:tank, x:ex, hp:34+stage*5, maxHp:34+stage*5, hpBar:hpBar, fireCd:1+Math.random(),
     speed:5, dmg:10, isBoss:false, isHeli:true, scale:1, hoverY:hoverY, phase:Math.random()*10,
-    armor:0, enraged:false, fireCdMultiplier:1,
+    armor:0, enraged:false, fireCdMultiplier:1, facingDir:-1, engineAudio:startHeliEngineSound(),
     scoreValue:30, coinValue:7, hpBarYOffset:1.4
   });
 }
 
 function startStage(){
   // تنظيف الأعداء والقذائف
-  enemies.forEach(function(e){ scene.remove(e.tank); scene.remove(e.hpBar); });
+  enemies.forEach(function(e){ scene.remove(e.tank); scene.remove(e.hpBar); if(e.engineAudio) stopHeliEngineSound(e.engineAudio); });
   enemies = [];
   projectiles.forEach(function(p){ scene.remove(p.mesh); }); projectiles = [];
   bossSpawned = false; stageClearing = false;
@@ -1543,11 +1588,12 @@ function updateGroundEnemy(e, dt){
     e.tank.userData.turretMesh.material.emissiveIntensity = 0.35 + Math.sin(performance.now()*0.012)*0.3;
   }
 
-  // توجيه البرج نحو اللاعب (زاوية الارتفاع فوق الأفقي) بتصويب سلس (Lerp) بدل القفز الفوري للزاوية المستهدفة.
+  // توجيه البرج نحو اللاعب فعلياً: زاوية ارتفاع محسوبة بالستيكية الحقيقية (نفس سرعة المقذوف وجاذبية اللعبة)
+  // بدل صيغة ثابتة تجعل الماسورة تبدو موجّهة للأعلى دوماً بلا علاقة بموقع اللاعب الفعلي — بتصويب سلس (Lerp)
   // لا حاجة لعكس الإشارة حسب جهة المواجهة — دوران الهيكل الأب (rotation.y) يتكفّل بعكس المحور السيني تلقائياً
-  // (نفس الخلل الذي كان يمنع اللاعب من رفع الماسورة يساراً، مُصحَّح هنا بنفس المبدأ لدبابات العدو)
   var bp = e.tank.userData.barrelPivot;
-  var aimAng = 0.35 + Math.min(0.5, absD/120);
+  var shooterY = e.tank.position.y + 1.24, targetY = player.tank.position.y + 0.9;
+  var aimAng = computeBallisticAngle(absD, targetY - shooterY, 34, 26);
   bp.rotation.z += (aimAng - bp.rotation.z) * Math.min(1, dt*4.5);
 
   // الإطلاق على اللاعب — الاتجاه الأفقي يتبع جهة المواجهة الفعلية فيصيب اللاعب سواء كان يميناً أو يساراً.
@@ -1568,20 +1614,30 @@ function updateGroundEnemy(e, dt){
 function updateHelicopter(e, dt){
   e.phase += dt;
   var d = e.x - player.x;
+  var absD = Math.abs(d);
+  // مرونة تموضع أعلى: تلاحق جانب اللاعب الحالي بسرعة استجابة أكبر بدل الانجراف البطيء بين الجانبين
   var targetX = player.x + Math.sign(d||1)*18 + Math.sin(e.phase*0.6)*6;
-  e.x += (targetX - e.x) * Math.min(1, dt*0.8);
+  e.x += (targetX - e.x) * Math.min(1, dt*1.4);
   var hoverY = e.hoverY + Math.sin(e.phase*1.4)*0.6;
   var z = Math.sin(e.phase*0.5)*2;
   e.tank.position.set(e.x, hoverY, z);
+  if(e.engineAudio && e.engineAudio.panner) e.engineAudio.panner.pan.value = worldPan(e.x);
+
+  // اتجاه المواجهة الفعلي (نفس مبدأ الدبابات الأرضية): تواجه المروحية جهة اللاعب دائماً بدل اتجاه ثابت
+  if(absD > 1.5){ e.facingDir = (player.x >= e.x) ? 1 : -1; }
+  e.tank.rotation.y = e.facingDir >= 0 ? 0 : Math.PI;
+
   // دوران المراوح (للنموذج الإجرائي البديل فقط — النموذج الحقيقي مُصدَّر كشبكة واحدة مدمجة بلا مراوح منفصلة)
   if(e.tank.userData.rotor) e.tank.userData.rotor.rotation.y += dt*40;
   if(e.tank.userData.rotor2) e.tank.userData.rotor2.rotation.y += dt*40;
   if(e.tank.userData.tailRotor) e.tank.userData.tailRotor.rotation.x += dt*50;
 
+  // إطلاق الصواريخ نحو اللاعب فعلياً (زاوية محسوبة بالستيكية الحقيقية) بدل اتجاه سفلي ثابت لا يلاحظ موقع اللاعب
   e.fireCd -= dt;
-  if(e.fireCd<=0 && Math.abs(d) < 26){
+  if(e.fireCd<=0 && absD < 26){
     e.fireCd = (1.6 + Math.random()) * e.fireCdMultiplier;
-    var dropDir = new THREE.Vector3(-0.3, -0.95, 0).normalize();
+    var aimAng = computeBallisticAngle(absD, (player.tank.position.y + 0.9) - (hoverY - 0.3), 34, 26);
+    var dropDir = new THREE.Vector3(Math.cos(aimAng) * e.facingDir, Math.sin(aimAng), 0).normalize();
     fireProjectile(e.tank.userData.muzzle, dropDir, false, e.dmg, 3.5, e.tank);
   }
 }
@@ -1608,6 +1664,7 @@ function updateEnemies(dt){
       score += e.scoreValue;
       coins += e.coinValue;
       scene.remove(e.tank); scene.remove(e.hpBar);
+      if(e.engineAudio) stopHeliEngineSound(e.engineAudio);
       enemies.splice(i,1);
       updateHUD();
     }
@@ -1859,6 +1916,11 @@ document.getElementById('muteBtn').addEventListener('click', function(){
   muted=!muted; this.textContent = muted?'🔇':'🔊';
   if(masterGain) masterGain.gain.value = muted?0:0.6;
   if(!muted) playSound('click');
+});
+// طيّ/بسط لوحة مؤشرات الدرع والوقود والذخيرة (لإخفائها عن الرؤية عند الحاجة)
+document.getElementById('statusToggle').addEventListener('click', function(){
+  var collapsed = document.getElementById('statusStrip').classList.toggle('collapsed');
+  this.textContent = collapsed ? '▸' : '▾';
 });
 
 /* ------------------------------------------------------------------ *
