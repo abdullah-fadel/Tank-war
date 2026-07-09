@@ -456,8 +456,36 @@ function addMountainLayer(zDist, color, count, scale, yBase){
     bgGroup.add(m);
   }
 }
-addMountainLayer(-140, 0x6a5a7a, 20, 26, 6);
-addMountainLayer(-95,  0x8a6a5a, 22, 18, 2);
+// خلفية جبلية ثلاثية الأبعاد حقيقية (تضاريس Grand Canyon الفعلية) بدل الأشكال الهندسية الإجرائية
+// عدّة نسخ متجاورة بتنويع طفيف بالحجم/الدوران تُكوّن سلسلة جبال مستمرة تغطي عرض الأفق
+var CANYON_MODEL_URL = 'models/canyon.glb';
+function addCanyonBackdrop(){
+  if(typeof THREE.GLTFLoader === 'undefined'){ addMountainLayer(-140, 0x6a5a7a, 20, 26, 6); addMountainLayer(-95, 0x8a6a5a, 22, 18, 2); return; }
+  var loader = new THREE.GLTFLoader();
+  loader.load(CANYON_MODEL_URL, function(gltf){
+    var template = gltf.scene;
+    template.traverse(function(o){ if(o.isMesh){ o.castShadow = false; o.receiveShadow = false; } });
+    var box = new THREE.Box3().setFromObject(template);
+    var center = box.getCenter(new THREE.Vector3());
+    template.position.x -= center.x; template.position.z -= center.z; template.position.y -= box.min.y;
+
+    [-150, -50, 50, 150].forEach(function(x, i){
+      var pivot = new THREE.Group();
+      pivot.add(template.clone(true));
+      var scale = 120 + Math.random()*25;
+      pivot.scale.setScalar(scale);
+      pivot.rotation.y = (i%2===0 ? 0 : Math.PI) + (Math.random()-0.5)*0.3;
+      pivot.rotation.x = -10 * Math.PI/180; // ميلان خفيف يعرض تضاريس السطح نحو الكاميرا بدل حافة جانبية مسطحة
+      pivot.position.set(x + (Math.random()-0.5)*15, 0, -140 - Math.random()*10);
+      bgGroup.add(pivot);
+    });
+  }, undefined, function(err){
+    console.warn('[TankAssault] تعذّر تحميل الخلفية الجبلية ثلاثية الأبعاد، سيُستخدم الشكل الإجرائي البديل.', err);
+    addMountainLayer(-140, 0x6a5a7a, 20, 26, 6);
+    addMountainLayer(-95,  0x8a6a5a, 22, 18, 2);
+  });
+}
+addCanyonBackdrop();
 
 // غيوم تنجرف (billboards)
 function makeCloudTexture(){
