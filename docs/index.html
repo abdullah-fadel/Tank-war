@@ -730,6 +730,62 @@ function loadPlayerTankModel(onDone){
   });
 }
 
+// نموذج T-34 ثلاثي الأبعاد حقيقي لدبابات العدو (بدل الهيكل الإجرائي البسيط) — نفس مبدأ نموذج اللاعب:
+// شبكة مدمجة (لا يمكن فصل الماسورة عن البرج حركياً)، مع عقد تحكّم غير مرئية بمكان الماسورة الحقيقي.
+// يُحمَّل مرة واحدة كقالب (template) ثم يُستنسخ لكل دبابة عدو جديدة (خفيف على الذاكرة والأداء).
+var ENEMY_MODEL_URL = 'models/t34.glb';
+var enemyTankTemplate = null;
+function wrapLoadedEnemyModel(model){
+  var barrelPivot = new THREE.Group();
+  barrelPivot.position.set(0.65, 1.24, 0);
+  var muzzle = new THREE.Object3D();
+  muzzle.position.set(1.79, 0, 0);
+  barrelPivot.add(muzzle);
+
+  var turretRef = new THREE.Object3D();
+  turretRef.position.set(-0.33, 1.33, 0);
+
+  var exhaustTip = new THREE.Object3D();
+  exhaustTip.position.set(-2.17, 0.88, -0.31);
+
+  var root = new THREE.Group();
+  root.add(model);
+  root.add(barrelPivot);
+  root.add(turretRef);
+  root.add(exhaustTip);
+
+  root.userData = {
+    turret: turretRef, barrelPivot: barrelPivot, muzzle: muzzle, wheels: [], scale: 1,
+    hull: model, hullOrigY: 0, barrel: null, barrelOrigX: 0,
+    turretMesh: null, exhaustTip: exhaustTip, recoilTimer: 0
+  };
+  return root;
+}
+function loadEnemyTankModel(){
+  if(typeof THREE.GLTFLoader === 'undefined') return;
+  var loader = new THREE.GLTFLoader();
+  loader.load(ENEMY_MODEL_URL, function(gltf){
+    gltf.scene.traverse(function(o){ if(o.isMesh){ o.castShadow = true; o.receiveShadow = true; } });
+    enemyTankTemplate = gltf.scene;
+  }, undefined, function(err){
+    console.warn('[TankAssault] تعذّر تحميل نموذج دبابة العدو T-34، سيُستخدم النموذج الإجرائي البديل.', err);
+  });
+}
+// يُستنسخ كل جسم فرعي (النموذج + خرائطه) بأمان لأنه بلا عظام/حركة هيكلية، والمواد تبقى مشتركة بين النسخ لتوفير الذاكرة
+function makeEnemyTank(opts){
+  if(!enemyTankTemplate) return buildTank(opts);
+  var tank = wrapLoadedEnemyModel(enemyTankTemplate.clone(true));
+  tank.userData.scale = opts.scale;
+  tank.scale.setScalar(opts.scale);
+  if(opts.tint != null){
+    tank.userData.hull.traverse(function(o){
+      if(o.isMesh){ o.material = o.material.clone(); o.material.color.setHex(opts.tint); }
+    });
+  }
+  return tank;
+}
+loadEnemyTankModel();
+
 /* ------------------------------------------------------------------ *
  *  5) نظام الجزيئات (Particles): انفجار، دخان، غبار، وميض
  * ------------------------------------------------------------------ */
@@ -1142,15 +1198,16 @@ function spawnEnemy(isBoss){
 
   var opts = isBoss
     ? { body:0x8a1f1f, turret:0x5a1212, scale:1.9 }
-    : (Math.random()<0.35 ? { body:0x6d4a3a, turret:0x3a251c, scale:1.25 } : { body:0x8a3a34, turret:0x4a1c18, scale:1.0 });
-  var tank = buildTank(opts);
+    : (Math.random()<0.35 ? { body:0x6d4a3a, turret:0x3a251c, scale:1.25, tint:0xcdb896 } : { body:0x8a3a34, turret:0x4a1c18, scale:1.0, tint:0xffffff });
+  // الزعيم يبقى بالهيكل الإجرائي المميّز (لون أحمر مهيب)؛ الدبابات العادية تستخدم نموذج T-34 الحقيقي إذا كان جاهزاً
+  var tank = isBoss ? buildTank(opts) : makeEnemyTank(opts);
   var ex = player.x + 55 + Math.random()*30;
   tank.rotation.y = Math.PI; // مواجهة اللاعب (يسار)
   scene.add(tank);
   var hpBar = makeHealthBar(); scene.add(hpBar);
   var heavy = opts.scale>1.1 && !isBoss;
   enemies.push({
-    tank:tank, x:ex, hp: isBoss?(320+stage*40):(heavy?(60+stage*10):(30+stage*6)),
+    tank:tank, x:ex, vx:0, hp: isBoss?(320+stage*40):(heavy?(60+stage*10):(30+stage*6)),
     maxHp: isBoss?(320+stage*40):(heavy?(60+stage*10):(30+stage*6)),
     hpBar:hpBar, fireCd:1+Math.random()*1.5,
     speed: isBoss?4:(heavy?4:7), dmg: isBoss?18:(heavy?14:8),
@@ -1348,8 +1405,11 @@ var ENRAGE_EMISSIVE_COLOR = new THREE.Color(0xff2200);
 function updateGroundEnemy(e, dt){
   var gy = groundHeightAt(e.x);
   var d = e.x - player.x;
-  // الذكاء البسيط: يقترب حتى المدى ثم يتوقف ويطلق
-  if(Math.abs(d) > e.range){ e.x -= Math.sign(d) * e.speed * dt; }
+  // الذكاء البسيط: يقترب حتى المدى ثم يتوقف ويطلق — بتسارع/كبح تدريجي بدل القفز المباشر للسرعة القصوى والتوقف المفاجئ
+  var targetVx = Math.abs(d) > e.range ? -Math.sign(d) * e.speed : 0;
+  var accel = e.speed * (targetVx === 0 ? 3.2 : 2.4);
+  e.vx += Math.max(-accel*dt, Math.min(accel*dt, targetVx - e.vx));
+  e.x += e.vx*dt;
   e.tank.position.set(e.x, gy, 0);
 
   // تفعيل غضب الزعيم عند انخفاض صحته (سرعة إطلاق أعلى + توهّج تحذيري)
@@ -1361,16 +1421,18 @@ function updateGroundEnemy(e, dt){
     e.tank.userData.turretMesh.material.emissiveIntensity = 0.35 + Math.sin(performance.now()*0.012)*0.3;
   }
 
-  // توجيه البرج نحو اللاعب (زاوية مقذوف تقريبية)
+  // توجيه البرج نحو اللاعب (زاوية مقذوف تقريبية) بتصويب سلس (Lerp) بدل القفز الفوري للزاوية المستهدفة
   var bp = e.tank.userData.barrelPivot;
   var aimAng = 0.35 + Math.min(0.5, Math.abs(d)/120);
-  bp.rotation.z = -aimAng; // معكوسة لأن الدبابة مقلوبة (تواجه اليسار)
+  var targetRot = -aimAng; // معكوسة لأن الدبابة مقلوبة (تواجه اليسار)
+  bp.rotation.z += (targetRot - bp.rotation.z) * Math.min(1, dt*4.5);
 
-  // الإطلاق على اللاعب
+  // الإطلاق على اللاعب — يعتمد اتجاه القذيفة على زاوية الماسورة الفعلية الحالية (بعد التصويب السلس) لا الزاوية المثالية
   e.fireCd -= dt;
   if(e.fireCd<=0 && Math.abs(d) < e.range+6){
     e.fireCd = (e.isBoss?0.9:(1.4+Math.random())) * e.fireCdMultiplier;
-    var dir = new THREE.Vector3(-Math.cos(aimAng), Math.sin(aimAng), 0); // نحو اليسار وللأعلى
+    var curAng = -bp.rotation.z;
+    var dir = new THREE.Vector3(-Math.cos(curAng), Math.sin(curAng), 0); // نحو اليسار وللأعلى
     fireProjectile(e.tank.userData.muzzle, dir, false, e.dmg, 0, e.tank);
   }
 }
