@@ -718,10 +718,63 @@ function buildHelicopter(){
   return g;
 }
 
-// نموذج مروحية أباتشي AH-64D ثلاثي الأبعاد حقيقي (بدل الهيكل الإجرائي البسيط) — نفس مبدأ نماذج الدبابات:
-// شبكة مدمجة (المراوح جزء ثابت من الشبكة، لا تدور بصرياً)، مع عقدة تحكّم غير مرئية بموقع مدفع العيار 30مم الحقيقي
+// نموذج مروحية أباتشي AH-64D ثلاثي الأبعاد حقيقي (بدل الهيكل الإجرائي البسيط) — نفس مبدأ نماذج الدبابات
+// مع عقدة تحكّم غير مرئية بموقع مدفع العيار 30مم الحقيقي
 var HELI_MODEL_URL = 'models/apache.glb';
 var heliTemplate = null;
+
+// المراوح مُصدَّرة كجزء من نفس شبكة الهيكل الثابتة (بلا عقد/رؤوس منفصلة) — الفهارس أدناه
+// حُدِّدت مسبقاً بتحليل اتصال الرؤوس (اكتشاف الجزر المنفصلة هندسياً) لعزل شفرات المروحة الرئيسية
+// وذيل المروحية عن بقية الهيكل، بحيث يمكن فصلها لمجموعتين دوارتين مستقلتين حول محوري الدوران الحقيقيين
+var HELI_MAIN_ROTOR_VERTS = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,107,108,109,110,111,10179,10238,10241,10337,10388,10457,10514,10574,10640,10642,10685,10694,10699,10700,10707,10708,10720,10746,10747,10774,10780,10782,10792,10809,10818,10823,10824,10829,10847,10888,10897,10921,10935,11037,11074,11092,11139,11179,11212,11266,11397,11423,11473,11581,11665,11822,11900,11930];
+var HELI_TAIL_ROTOR_VERTS = [2715,2716,2717,2718,2719,2720,2721,2722,2723,2724,2725,2726,2727,2728,2729,2730,2731,2732,2733,2734,2735,2736,2737,2738,2739,2740,2741,2742,2743,2744,2745,2746,2747,2748,2749,2750,2751,2752,2753,2754,2755,2756,2757,2758,2759,2760,2761,2762,2763,2764,2765,2766,2767,2768,2769,2770,2771,2772,2773,2774,2775,2776,2777,2778,2779,2780,2781,2782,2783,2784,2785,2786,2787,2788,2789,2790,11033,11371];
+var HELI_MAIN_ROTOR_PIVOT = [0.266, 0.001, 0.158]; // مركز عمود الدوران الرئيسي (محلي)
+var HELI_TAIL_ROTOR_PIVOT = [-1.028, -0.003, 0.006]; // مركز عمود دوران الذيل (محلي)
+
+// يفصل مثلثات الشبكة الأصلية الخاصة بالمروحتين عن بقية الهيكل عبر فهارس الرؤوس أعلاه،
+// وينشئ مجموعتين دوارتين (Pivot) حول مركز كل عمود دوران، فتدور الشفرات فعلياً بدل بقائها ثابتة
+function splitHeliRotorBlades(root){
+  var targetMesh = null;
+  root.traverse(function(o){ if(o.isMesh && o.material && o.material.name === 'mat_6-Main_Body_2.jpg') targetMesh = o; });
+  if(!targetMesh || !targetMesh.geometry.getIndex()) return;
+  var geo = targetMesh.geometry;
+  var idx = geo.getIndex();
+  var mainSet = new Set(HELI_MAIN_ROTOR_VERTS), tailSet = new Set(HELI_TAIL_ROTOR_VERTS);
+  var hullIdx = [], mainIdx = [], tailIdx = [];
+  for(var i=0;i<idx.count;i+=3){
+    var a=idx.getX(i), b=idx.getX(i+1), c=idx.getX(i+2);
+    if(mainSet.has(a) && mainSet.has(b) && mainSet.has(c)) mainIdx.push(a,b,c);
+    else if(tailSet.has(a) && tailSet.has(b) && tailSet.has(c)) tailIdx.push(a,b,c);
+    else hullIdx.push(a,b,c);
+  }
+  function makeSub(indices){
+    var g = new THREE.BufferGeometry();
+    g.setAttribute('position', geo.attributes.position);
+    if(geo.attributes.normal) g.setAttribute('normal', geo.attributes.normal);
+    if(geo.attributes.uv) g.setAttribute('uv', geo.attributes.uv);
+    g.setIndex(indices);
+    g.computeBoundingSphere();
+    return g;
+  }
+  var hullMesh = new THREE.Mesh(makeSub(hullIdx), targetMesh.material);
+  hullMesh.castShadow = targetMesh.castShadow; hullMesh.receiveShadow = targetMesh.receiveShadow;
+  function makeRotorPivot(indices, pivot, name){
+    var m = new THREE.Mesh(makeSub(indices), targetMesh.material);
+    m.castShadow = targetMesh.castShadow; m.receiveShadow = targetMesh.receiveShadow;
+    m.position.set(-pivot[0], -pivot[1], -pivot[2]);
+    var group = new THREE.Group();
+    group.name = name;
+    group.position.set(pivot[0], pivot[1], pivot[2]);
+    group.add(m);
+    return group;
+  }
+  var mainRotorPivot = makeRotorPivot(mainIdx, HELI_MAIN_ROTOR_PIVOT, 'mainRotorPivot');
+  var tailRotorPivot = makeRotorPivot(tailIdx, HELI_TAIL_ROTOR_PIVOT, 'tailRotorPivot');
+  var parent = targetMesh.parent;
+  parent.add(hullMesh); parent.add(mainRotorPivot); parent.add(tailRotorPivot);
+  parent.remove(targetMesh);
+}
+
 function wrapLoadedHeliModel(model){
   var muzzle = new THREE.Object3D();
   muzzle.position.set(1.84, -0.58, 0.02);
@@ -731,7 +784,10 @@ function wrapLoadedHeliModel(model){
   root.add(model);
 
   root.userData = {
-    rotor:null, rotor2:null, tailRotor:null, muzzle:muzzle, wheels:[], scale:1,
+    rotor:model.getObjectByName('mainRotorPivot')||null, rotor2:null,
+    tailRotor:model.getObjectByName('tailRotorPivot')||null,
+    rotorAxis:'z', tailRotorAxis:'y', // محاور دوران المسمارين الحقيقيين تختلف عن النموذج الإجرائي البديل (Y أعلى فيه)
+    muzzle:muzzle, wheels:[], scale:1,
     hull:model, hullOrigY:0, barrel:null, barrelOrigX:0,
     turretMesh:null, exhaustTip:null, recoilTimer:0
   };
@@ -742,6 +798,7 @@ function loadHeliModel(){
   var loader = new THREE.GLTFLoader();
   loader.load(HELI_MODEL_URL, function(gltf){
     gltf.scene.traverse(function(o){ if(o.isMesh){ o.castShadow = true; o.receiveShadow = true; } });
+    splitHeliRotorBlades(gltf.scene);
     heliTemplate = gltf.scene;
   }, undefined, function(err){
     console.warn('[TankAssault] تعذّر تحميل نموذج المروحية، سيُستخدم النموذج الإجرائي البديل.', err);
@@ -1711,10 +1768,11 @@ function updateHelicopter(e, dt){
   if(absD > 1.5){ e.facingDir = (player.x >= e.x) ? 1 : -1; }
   e.tank.rotation.y = e.facingDir >= 0 ? 0 : Math.PI;
 
-  // دوران المراوح (للنموذج الإجرائي البديل فقط — النموذج الحقيقي مُصدَّر كشبكة واحدة مدمجة بلا مراوح منفصلة)
-  if(e.tank.userData.rotor) e.tank.userData.rotor.rotation.y += dt*40;
-  if(e.tank.userData.rotor2) e.tank.userData.rotor2.rotation.y += dt*40;
-  if(e.tank.userData.tailRotor) e.tank.userData.tailRotor.rotation.x += dt*50;
+  // دوران المراوح الفعلي أثناء التحليق (المحور يختلف بين النموذج ثلاثي الأبعاد الحقيقي والاحتياطي الإجرائي)
+  var rotorAxis = e.tank.userData.rotorAxis || 'y', tailRotorAxis = e.tank.userData.tailRotorAxis || 'x';
+  if(e.tank.userData.rotor) e.tank.userData.rotor.rotation[rotorAxis] += dt*40;
+  if(e.tank.userData.rotor2) e.tank.userData.rotor2.rotation[rotorAxis] += dt*40;
+  if(e.tank.userData.tailRotor) e.tank.userData.tailRotor.rotation[tailRotorAxis] += dt*50;
 
   // إطلاق الصواريخ نحو اللاعب فعلياً (زاوية محسوبة بالستيكية الحقيقية) بدل اتجاه سفلي ثابت لا يلاحظ موقع اللاعب
   e.fireCd -= dt;
