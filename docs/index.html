@@ -188,6 +188,19 @@
   }
   .btn-aim{ width:54px; height:54px; font-size:20px; }
 
+  .btn-special{
+    width:62px; height:62px; font-size:11px; letter-spacing:.02em; position:relative;
+    background:radial-gradient(circle at 35% 30%, #ffd23e, #a8720f 78%);
+    border-color:#7a4d08; box-shadow:0 6px 18px rgba(255,176,32,0.45);
+  }
+  .special-badge{
+    position:absolute; top:-4px; left:-4px; width:18px; height:18px; border-radius:50%;
+    background:#ff3a2a; color:#fff; font-size:10px; font-weight:800; line-height:18px;
+    border:1.5px solid rgba(255,255,255,.5);
+  }
+  .btn-special.used{ filter:grayscale(1) brightness(.5); pointer-events:none; }
+  .btn-special.used .special-badge{ display:none; }
+
   /* ===================== الشاشات ===================== */
   .screen{
     position:absolute; inset:0; z-index:20;
@@ -290,6 +303,10 @@
     <div class="tbtn btn-aim" id="btnAimDown">▼</div>
   </div>
   <div class="pad-actions">
+    <div class="tbtn btn-special" id="btnSpecial" title="قذيفة خارقة للدروع — مرة واحدة كل مرحلة">
+      <span class="special-badge">1</span>
+      خارقة
+    </div>
     <div class="tbtn btn-jump" id="btnJump">قفز</div>
     <div class="tbtn btn-fire" id="btnFire">إطلاق</div>
   </div>
@@ -729,6 +746,21 @@ function makeHeliTank(){
 }
 loadHeliModel();
 
+// نموذج القذيفة الخاصة الخارقة للدروع (M829A1) — تُستنسخ مرة واحدة فقط عند إطلاقها (مرة واحدة لكل مرحلة)
+var SPECIAL_SHELL_MODEL_URL = 'models/special_shell.glb';
+var specialShellTemplate = null;
+function loadSpecialShellModel(){
+  if(typeof THREE.GLTFLoader === 'undefined') return;
+  var loader = new THREE.GLTFLoader();
+  loader.load(SPECIAL_SHELL_MODEL_URL, function(gltf){
+    gltf.scene.traverse(function(o){ if(o.isMesh){ o.castShadow = true; } });
+    specialShellTemplate = gltf.scene;
+  }, undefined, function(err){
+    console.warn('[TankAssault] تعذّر تحميل نموذج القذيفة الخاصة، سيُستخدم النموذج الإجرائي البديل.', err);
+  });
+}
+loadSpecialShellModel();
+
 // شريط صحة ثلاثي الأبعاد يطفو فوق الوحدة
 function makeHealthBar(){
   var g = new THREE.Group();
@@ -1088,21 +1120,22 @@ var projGeo = new THREE.SphereGeometry(0.35, 8, 8);
 var projMatP = new THREE.MeshStandardMaterial({ color:0xffcf6b, emissive:0xff8a00, emissiveIntensity:0.8, roughness:0.4 });
 var projMatE = new THREE.MeshStandardMaterial({ color:0xff6b57, emissive:0xff2a1a, emissiveIntensity:0.8, roughness:0.4 });
 
-function fireProjectile(muzzleObj, dir, fromPlayer, dmg, splash, tankRef){
+function fireProjectile(muzzleObj, dir, fromPlayer, dmg, splash, tankRef, customMesh, isSpecial){
   var pos = new THREE.Vector3(); muzzleObj.getWorldPosition(pos);
-  var m = new THREE.Mesh(projGeo, fromPlayer?projMatP:projMatE);
+  var m = customMesh || new THREE.Mesh(projGeo, fromPlayer?projMatP:projMatE);
   m.position.copy(pos); m.castShadow = true;
+  if(customMesh) m.rotation.z = Math.atan2(dir.y, dir.x); // توجيه طرف القذيفة المدبب نحو اتجاه الإطلاق
   scene.add(m);
-  var speed = fromPlayer ? 42 : 34;
+  var speed = fromPlayer ? (isSpecial ? 50 : 42) : 34;
   projectiles.push({
     mesh:m,
     vel:new THREE.Vector3(dir.x*speed, dir.y*speed, 0),
-    fromPlayer:fromPlayer, dmg:dmg, splash:splash||0, life:5
+    fromPlayer:fromPlayer, dmg:dmg, splash:splash||0, life:5, isSpecial:!!isSpecial
   });
   muzzleFlash(pos, dir);
   playSound('fire', worldPan(pos.x), false, fromPlayer);
-  camShake = Math.max(camShake, fromPlayer?0.35:0.15);
-  camFovPunch = Math.max(camFovPunch, fromPlayer?2:0.6);
+  camShake = Math.max(camShake, isSpecial ? 0.6 : (fromPlayer?0.35:0.15));
+  camFovPunch = Math.max(camFovPunch, isSpecial ? 4 : (fromPlayer?2:0.6));
 
   if(tankRef && tankRef.userData){
     tankRef.userData.recoilTimer = 0.15;
@@ -1111,6 +1144,18 @@ function fireProjectile(muzzleObj, dir, fromPlayer, dmg, splash, tankRef){
       ejectCasing(cpos, dir.x>=0?1:-1);
     }
   }
+}
+
+// القذيفة الخاصة الخارقة للدروع (M829A1) — مرة واحدة فقط لكل مرحلة، تلحق 70% من صحة الهدف القصوى بصرف النظر عن الدرع
+function fireSpecialShell(){
+  // سلاح مستقل عن المدفع الرئيسي: لا يتأثر بحالة الذخيرة/إعادة التلقيم العادية
+  if(player.specialUsed || state !== 'playing') return;
+  player.specialUsed = true;
+  document.getElementById('btnSpecial').classList.add('used');
+  var facingSign = player.dir >= 0 ? 1 : -1;
+  var dir = new THREE.Vector3(Math.cos(player.aim) * facingSign, Math.sin(player.aim), 0);
+  var mesh = specialShellTemplate ? specialShellTemplate.clone(true) : null;
+  fireProjectile(player.tank.userData.muzzle, dir, true, player.dmg*3, 4, player.tank, mesh, true);
 }
 
 /* ------------------------------------------------------------------ *
@@ -1338,7 +1383,8 @@ var player = {
   aim:0.35,           // زاوية المدفع (راديان)
   fireCd:0, dir:1,
   dmg:22, speed:14,
-  ammo:6, maxAmmo:6, reloading:false, reloadTimer:0, reloadTime:2.4
+  ammo:6, maxAmmo:6, reloading:false, reloadTimer:0, reloadTime:2.4,
+  specialUsed:false // القذيفة الخارقة للدروع: مرة واحدة فقط لكل مرحلة
 };
 scene.add(player.tank);
 
@@ -1412,6 +1458,8 @@ function startStage(){
   spawnTimer = 1;
   player.x = 0; player.hp = player.maxHp; player.fuel = player.maxFuel; player.vy=0; player.onGround=true;
   player.ammo = player.maxAmmo; player.reloading = false; player.reloadTimer = 0;
+  player.specialUsed = false;
+  document.getElementById('btnSpecial').classList.remove('used');
   document.getElementById('stageNum').textContent = stage;
   showBanner('المرحلة ' + stage);
   updateHUD();
@@ -1433,6 +1481,7 @@ function bindHold(id, on){
 }
 bindHold('btnAimUp','up'); bindHold('btnAimDown','down');
 bindHold('btnFire','fire'); bindHold('btnJump','jump');
+document.getElementById('btnSpecial').addEventListener('pointerdown', function(e){ e.preventDefault(); fireSpecialShell(); });
 
 // عصا تحكم تناظرية للحركة يمين/يسار (تدعم اللمس المتعدد عبر Pointer Events)
 function bindJoystick(zoneId, handleId, onChange){
@@ -1718,6 +1767,7 @@ function updateProjectiles(dt){
     var p = projectiles[i];
     p.vel.y += GRAVITY*dt;
     p.mesh.position.addScaledVector(p.vel, dt);
+    if(p.isSpecial) p.mesh.rotation.z = Math.atan2(p.vel.y, p.vel.x); // طرف القذيفة يتبع مسارها المقوّس بالجاذبية
     p.life -= dt;
     // أثر القذيفة
     if(Math.random()<0.6) spawnParticle(p.mesh.position.x, p.mesh.position.y, p.mesh.position.z,
@@ -1732,9 +1782,10 @@ function updateProjectiles(dt){
         var e = enemies[j];
         var ey = e.tank.position.y;
         if(Math.abs(p.mesh.position.x - e.x) < 2.2*e.scale && Math.abs(p.mesh.position.y - ey - 1.4*e.scale) < 3*e.scale){
-          var applied = p.dmg * (1 - (e.armor||0));
+          // القذيفة الخاصة الخارقة للدروع تتجاهل تخفيف الدرع وتلحق ضرراً هائلاً يساوي 70% من صحة الهدف القصوى
+          var applied = p.isSpecial ? e.maxHp*0.7 : p.dmg * (1 - (e.armor||0));
           e.hp -= applied; hit=true; playSound('hit', worldPan(e.x)); showHitMarker();
-          spawnDamageText(e.x, ey + 3.6*e.scale + 0.7, e.tank.position.z||0, '-'+Math.round(applied), e.isHeli?'#8fd0ff':'#ffce6b');
+          spawnDamageText(e.x, ey + 3.6*e.scale + 0.7, e.tank.position.z||0, '-'+Math.round(applied), p.isSpecial?'#ff5a2a':(e.isHeli?'#8fd0ff':'#ffce6b'));
           if(p.splash){ for(var k=0;k<enemies.length;k++){ if(k!==j && Math.abs(enemies[k].x - e.x)<p.splash) enemies[k].hp -= p.dmg*0.5*(1-(enemies[k].armor||0)); } }
           break;
         }
@@ -1750,7 +1801,7 @@ function updateProjectiles(dt){
     }
 
     if(p.mesh.position.y <= gy || hit || p.life<=0){
-      explosion(p.mesh.position.x, Math.max(gy, p.mesh.position.y), p.mesh.position.z||0, false);
+      explosion(p.mesh.position.x, Math.max(gy, p.mesh.position.y), p.mesh.position.z||0, !!p.isSpecial);
       if(!hit) playSound('explosion', worldPan(p.mesh.position.x));
       scene.remove(p.mesh); projectiles.splice(i,1);
     }
