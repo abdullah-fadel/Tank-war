@@ -97,6 +97,14 @@
   }
   .edit-toolbar.show{ display:flex; }
   .et-hint{ font-size:12px; color:#e8e6d9; text-align:center; line-height:1.5; }
+  .et-selected{
+    font-size:12px; font-weight:800; color:#8fd0ff; text-align:center;
+    padding:3px 12px; border-radius:999px; background:rgba(143,208,255,.12);
+    border:1px solid rgba(143,208,255,.35);
+  }
+  .et-selected.none{ color:#9aa08c; background:rgba(255,255,255,.05); border-color:rgba(255,255,255,.1); }
+  .et-sliders{ display:flex; flex-direction:column; gap:8px; width:100%; }
+  .et-sliders.disabled{ opacity:.35; pointer-events:none; }
   .et-row{ display:flex; align-items:center; gap:10px; width:100%; }
   .et-row label{ font-size:11px; color:#c9c6b8; flex:none; width:52px; }
   .et-row input[type="range"]{ flex:1; accent-color:#ffb020; }
@@ -159,16 +167,20 @@
   /* ===================== أزرار التحكم ===================== */
   .controls{ position:absolute; inset:0; z-index:11; pointer-events:none; }
 
-  /* كل عنصر تحكّم مستقل الموضع (قابل للسحب والتحجيم فردياً في وضع التخصيص) */
+  /* كل عنصر تحكّم مستقل الموضع والحجم والشفافية (تُعدَّل فردياً لكل زر في وضع التخصيص) */
   .ctrl-el{
     position:absolute;
-    transform:scale(var(--ctrl-scale,1)); transform-origin:center center;
-    opacity:var(--ctrl-opacity,1);
+    transform:scale(var(--el-scale,1)); transform-origin:center center;
+    opacity:var(--el-opacity,1);
   }
   .ctrl-el.dragging{
     filter:brightness(1.25);
     box-shadow:0 0 0 3px rgba(255,176,32,.6), 0 10px 26px rgba(0,0,0,.55) !important;
     z-index:5;
+  }
+  body.controls-edit-mode .ctrl-el.selected{
+    box-shadow:0 0 0 3px rgba(143,208,255,.9), 0 10px 26px rgba(0,0,0,.55);
+    z-index:4;
   }
 
   #moveJoyZone{ left:16px; bottom:calc(env(safe-area-inset-bottom) + 14px); }
@@ -207,7 +219,7 @@
     -webkit-user-select:none; user-select:none;
     touch-action:none; -ms-touch-action:none;
   }
-  .tbtn:active, .tbtn.on{ transform:scale(calc(var(--ctrl-scale,1) * .9)); filter:brightness(1.35); }
+  .tbtn:active, .tbtn.on{ transform:scale(calc(var(--el-scale,1) * .9)); filter:brightness(1.35); }
 
   .btn-fire{
     width:82px; height:82px; font-size:14px; letter-spacing:.05em;
@@ -315,9 +327,12 @@
 </div>
 
 <div class="edit-toolbar glass" id="editToolbar">
-  <div class="et-hint">اسحب أي زر لأي مكان تريده على الشاشة</div>
-  <div class="et-row"><label>الحجم</label><input type="range" id="ctrlScaleSlider" min="0.7" max="1.4" step="0.05" value="1"></div>
-  <div class="et-row"><label>الشفافية</label><input type="range" id="ctrlOpacitySlider" min="0.5" max="1" step="0.05" value="1"></div>
+  <div class="et-hint">اسحب أي زر لتحريكه، أو اضغط عليه ضغطة خفيفة لتحديده وتعديل حجمه/شفافيته لوحده</div>
+  <div class="et-selected none" id="etSelectedLabel">لا يوجد زر محدَّد</div>
+  <div class="et-sliders disabled" id="etSliders">
+    <div class="et-row"><label>الحجم</label><input type="range" id="ctrlScaleSlider" min="0.6" max="1.7" step="0.05" value="1"></div>
+    <div class="et-row"><label>الشفافية</label><input type="range" id="ctrlOpacitySlider" min="0.3" max="1" step="0.05" value="1"></div>
+  </div>
   <div class="et-actions">
     <button type="button" id="swapSidesBtn">🔁 تبديل الجهة</button>
     <button type="button" id="resetLayoutBtn">استعادة الافتراضي</button>
@@ -1578,59 +1593,78 @@ var keys = { left:false, right:false, up:false, down:false, fire:false, jump:fal
 var joyAxis = 0; // محور تناظري من -1 (يسار) إلى 1 (يمين)، يأتي من عصا الحركة اللمسية
 var aimAxis = 0;  // محور تناظري من -1 (خفض) إلى 1 (رفع)، يأتي من عصا التصويب اللمسية
 
-// ------- تخصيص التخطيط: سحب/تحجيم/شفافية أزرار اللمس، محفوظ محلياً عبر localStorage -------
+// ------- تخصيص التخطيط: سحب/تحجيم/شفافية كل زر تحكّم على حدة، محفوظ محلياً عبر localStorage -------
 var CTRL_IDS = ['moveJoyZone','aimJoyZone','btnSpecial','btnJump','btnFire'];
-var CTRL_LAYOUT_KEY = 'tankAssaultControlLayout_v1';
+var CTRL_NAMES = { moveJoyZone:'عصا الحركة', aimJoyZone:'عصا التصويب', btnSpecial:'القذيفة الخارقة', btnJump:'زر القفز', btnFire:'زر الإطلاق' };
+var CTRL_LAYOUT_KEY = 'tankAssaultControlLayout_v2';
 var controlsEditMode = false;
+var selectedCtrl = null; // الزر المحدَّد حالياً في وضع التخصيص — الحجم/الشفافية يُعدَّلان له وحده
 var controlLayout = (function(){ try{ return JSON.parse(localStorage.getItem(CTRL_LAYOUT_KEY)) || {}; }catch(e){ return {}; } })();
-var controlScale = parseFloat(localStorage.getItem('tankAssaultCtrlScale')) || 1;
-var controlOpacity = parseFloat(localStorage.getItem('tankAssaultCtrlOpacity')) || 1;
 function saveControlLayout(){ try{ localStorage.setItem(CTRL_LAYOUT_KEY, JSON.stringify(controlLayout)); }catch(e){} }
-function saveControlScale(){ try{ localStorage.setItem('tankAssaultCtrlScale', controlScale); }catch(e){} }
-function saveControlOpacity(){ try{ localStorage.setItem('tankAssaultCtrlOpacity', controlOpacity); }catch(e){} }
+function ctrlEntry(id){ return controlLayout[id] || (controlLayout[id] = {}); }
 
 function applyControlLayout(){
   CTRL_IDS.forEach(function(id){
     var el = document.getElementById(id); var pos = controlLayout[id];
-    if(!pos) return; // لا يوجد تخصيص محفوظ لهذا العنصر — يبقى بموضعه الافتراضي من CSS
-    var w = el.offsetWidth || 60, h = el.offsetHeight || 60;
-    var left = Math.max(4, Math.min(window.innerWidth - w - 4, pos.leftPct*window.innerWidth));
-    var top = Math.max(4, Math.min(window.innerHeight - h - 4, pos.topPct*window.innerHeight));
-    // "auto" لا "" — الفراغ يسقط للقاعدة right/bottom في CSS، وبوجود اتجاه RTL يُهمَل left عندها (تحديد زائد)
-    el.style.right='auto'; el.style.bottom='auto'; el.style.left = left+'px'; el.style.top = top+'px';
+    if(!pos) return; // لا يوجد تخصيص محفوظ لهذا العنصر — يبقى بموضعه وحجمه الافتراضيين من CSS
+    if(pos.leftPct != null){
+      var w = el.offsetWidth || 60, h = el.offsetHeight || 60;
+      var left = Math.max(4, Math.min(window.innerWidth - w - 4, pos.leftPct*window.innerWidth));
+      var top = Math.max(4, Math.min(window.innerHeight - h - 4, pos.topPct*window.innerHeight));
+      // "auto" لا "" — الفراغ يسقط للقاعدة right/bottom في CSS، وبوجود اتجاه RTL يُهمَل left عندها (تحديد زائد)
+      el.style.right='auto'; el.style.bottom='auto'; el.style.left = left+'px'; el.style.top = top+'px';
+    }
+    el.style.setProperty('--el-scale', pos.scale!=null ? pos.scale : 1);
+    el.style.setProperty('--el-opacity', pos.opacity!=null ? pos.opacity : 1);
   });
-  var layer = document.getElementById('controlsLayer');
-  layer.style.setProperty('--ctrl-scale', controlScale);
-  layer.style.setProperty('--ctrl-opacity', controlOpacity);
+}
+
+function selectControl(id){
+  selectedCtrl = id;
+  CTRL_IDS.forEach(function(cid){ document.getElementById(cid).classList.toggle('selected', cid===id); });
+  var entry = controlLayout[id] || {};
+  document.getElementById('ctrlScaleSlider').value = entry.scale!=null ? entry.scale : 1;
+  document.getElementById('ctrlOpacitySlider').value = entry.opacity!=null ? entry.opacity : 1;
+  document.getElementById('etSliders').classList.remove('disabled');
+  var lbl = document.getElementById('etSelectedLabel');
+  lbl.textContent = CTRL_NAMES[id]; lbl.classList.remove('none');
+}
+function deselectControl(){
+  selectedCtrl = null;
+  CTRL_IDS.forEach(function(cid){ document.getElementById(cid).classList.remove('selected'); });
+  document.getElementById('etSliders').classList.add('disabled');
+  var lbl = document.getElementById('etSelectedLabel');
+  lbl.textContent = 'لا يوجد زر محدَّد'; lbl.classList.add('none');
 }
 
 function resetControlLayout(){
-  controlLayout = {}; controlScale = 1; controlOpacity = 1;
-  saveControlLayout(); saveControlScale(); saveControlOpacity();
+  controlLayout = {};
+  saveControlLayout();
   CTRL_IDS.forEach(function(id){
     var el = document.getElementById(id);
     el.style.left=''; el.style.top=''; el.style.right=''; el.style.bottom='';
+    el.style.removeProperty('--el-scale'); el.style.removeProperty('--el-opacity');
   });
-  document.getElementById('ctrlScaleSlider').value = 1;
-  document.getElementById('ctrlOpacitySlider').value = 1;
-  applyControlLayout();
+  deselectControl();
 }
 
-// يعكس مواضع كل الأزرار أفقياً (يمين↔يسار) — مناسب للاعبين العسراويين بضغطة واحدة
+// يعكس مواضع كل الأزرار أفقياً (يمين↔يسار) — مناسب للاعبين العسراويين بضغطة واحدة، دون المساس بما خُصِّص من حجم/شفافية
 function swapControlSides(){
   CTRL_IDS.forEach(function(id){
     var el = document.getElementById(id);
     var r = el.getBoundingClientRect();
-    controlLayout[id] = { leftPct:(window.innerWidth - r.right)/window.innerWidth, topPct:r.top/window.innerHeight };
+    var entry = ctrlEntry(id);
+    entry.leftPct = (window.innerWidth - r.right)/window.innerWidth;
+    entry.topPct = r.top/window.innerHeight;
   });
   saveControlLayout();
   applyControlLayout();
 }
 
-// سحب حر لأي زر تحكّم إلى أي مكان على الشاشة، فعّال فقط أثناء وضع التخصيص — يُسجَّل قبل مستمعي
-// اللعب (bindHold/bindJoystick) ويوقف انتشار الحدث عبر stopImmediatePropagation كي لا يتحرك
-// اللاعب أو يُطلق النار أثناء ترتيب أزراره
-var ctrlDragOffset = {};
+// سحب حر لأي زر تحكّم إلى أي مكان على الشاشة، أو ضغطة خفيفة (بلا سحب) لتحديده وتعديل حجمه/شفافيته
+// لوحده. فعّال فقط أثناء وضع التخصيص — يُسجَّل قبل مستمعي اللعب (bindHold/bindJoystick) ويوقف
+// انتشار الحدث عبر stopImmediatePropagation كي لا يتحرك اللاعب أو يُطلق النار أثناء ترتيب أزراره
+var ctrlDragOffset = {}, ctrlDragMoved = {}, ctrlDownPos = {};
 function bindControlDrag(el){
   el.addEventListener('pointerdown', function(e){
     if(!controlsEditMode) return;
@@ -1638,12 +1672,16 @@ function bindControlDrag(el){
     el.setPointerCapture(e.pointerId);
     var r = el.getBoundingClientRect();
     ctrlDragOffset[el.id] = { x:e.clientX-r.left, y:e.clientY-r.top };
+    ctrlDownPos[el.id] = { x:e.clientX, y:e.clientY };
+    ctrlDragMoved[el.id] = false;
     el.style.right='auto'; el.style.bottom='auto'; el.style.left = r.left+'px'; el.style.top = r.top+'px';
     el.classList.add('dragging');
   });
   el.addEventListener('pointermove', function(e){
     if(!controlsEditMode || !ctrlDragOffset[el.id]) return;
     e.stopImmediatePropagation(); e.preventDefault();
+    var down = ctrlDownPos[el.id];
+    if(Math.abs(e.clientX-down.x) > 6 || Math.abs(e.clientY-down.y) > 6) ctrlDragMoved[el.id] = true;
     var off = ctrlDragOffset[el.id], w = el.offsetWidth, h = el.offsetHeight;
     el.style.left = Math.max(4, Math.min(window.innerWidth - w - 4, e.clientX - off.x)) + 'px';
     el.style.top = Math.max(4, Math.min(window.innerHeight - h - 4, e.clientY - off.y)) + 'px';
@@ -1653,8 +1691,11 @@ function bindControlDrag(el){
     e.stopImmediatePropagation(); e.preventDefault();
     delete ctrlDragOffset[el.id]; el.classList.remove('dragging');
     var r = el.getBoundingClientRect();
-    controlLayout[el.id] = { leftPct:r.left/window.innerWidth, topPct:r.top/window.innerHeight };
+    var entry = ctrlEntry(el.id);
+    entry.leftPct = r.left/window.innerWidth; entry.topPct = r.top/window.innerHeight;
     saveControlLayout();
+    // نقرة بلا سحب فعلي = تحديد الزر لتعديل حجمه/شفافيته لوحده، بدل مجرد إعادة تثبيت موضعه الحالي
+    if(!ctrlDragMoved[el.id]) selectControl(el.id);
   }
   el.addEventListener('pointerup', endDrag);
   el.addEventListener('pointercancel', endDrag);
@@ -1739,25 +1780,30 @@ document.getElementById('editControlsBtn').addEventListener('click', function(){
   joyAxis = 0; aimAxis = 0; keys.fire = keys.jump = keys.up = keys.down = false;
   document.getElementById('btnFire').classList.remove('on');
   document.getElementById('btnJump').classList.remove('on');
+  deselectControl();
   document.getElementById('editToolbar').classList.add('show');
   document.body.classList.add('controls-edit-mode');
 });
 document.getElementById('doneEditBtn').addEventListener('click', function(){
   controlsEditMode = false;
+  deselectControl();
   document.getElementById('editToolbar').classList.remove('show');
   document.body.classList.remove('controls-edit-mode');
 });
 document.getElementById('resetLayoutBtn').addEventListener('click', resetControlLayout);
 document.getElementById('swapSidesBtn').addEventListener('click', swapControlSides);
-document.getElementById('ctrlScaleSlider').value = controlScale;
-document.getElementById('ctrlOpacitySlider').value = controlOpacity;
+// الحجم/الشفافية يُطبَّقان على الزر المحدَّد فقط (selectedCtrl)، لا على كل الأزرار دفعة واحدة
 document.getElementById('ctrlScaleSlider').addEventListener('input', function(e){
-  controlScale = parseFloat(e.target.value); saveControlScale();
-  document.getElementById('controlsLayer').style.setProperty('--ctrl-scale', controlScale);
+  if(!selectedCtrl) return;
+  var v = parseFloat(e.target.value);
+  ctrlEntry(selectedCtrl).scale = v; saveControlLayout();
+  document.getElementById(selectedCtrl).style.setProperty('--el-scale', v);
 });
 document.getElementById('ctrlOpacitySlider').addEventListener('input', function(e){
-  controlOpacity = parseFloat(e.target.value); saveControlOpacity();
-  document.getElementById('controlsLayer').style.setProperty('--ctrl-opacity', controlOpacity);
+  if(!selectedCtrl) return;
+  var v = parseFloat(e.target.value);
+  ctrlEntry(selectedCtrl).opacity = v; saveControlLayout();
+  document.getElementById(selectedCtrl).style.setProperty('--el-opacity', v);
 });
 applyControlLayout();
 window.addEventListener('resize', applyControlLayout);
