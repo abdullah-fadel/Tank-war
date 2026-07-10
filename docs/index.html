@@ -416,7 +416,7 @@ scene.add(hemi);
  *  3) الأرضية الصحراوية بتضاريس (كثبان) + نسيج رمل + خلفية طبقات
  * ------------------------------------------------------------------ */
 var GROUND_LEN = 1200;
-var groundGeo = new THREE.PlaneGeometry(GROUND_LEN, 120, 200, 12);
+var groundGeo = new THREE.PlaneGeometry(GROUND_LEN, 400, 200, 20);
 groundGeo.rotateX(-Math.PI/2);
 // إزاحة الرؤوس لعمل كثبان رملية ناعمة (بنفس صيغة groundHeightAt تماماً لتفادي أي تفاوت بين السطح المرئي والمنطقي)
 (function(){
@@ -448,7 +448,7 @@ function makeSandTexture(){
     }
   });
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(GROUND_LEN/9, 120/9);
+  tex.repeat.set(GROUND_LEN/9, 400/9);
   tex.encoding = THREE.sRGBEncoding;
   return tex;
 }
@@ -503,6 +503,13 @@ function addCanyonBackdrop(){
   });
 }
 addCanyonBackdrop();
+// جدار تعبئة دافئ خلف الجبال يتفاعل مع الضباب — يمنع تسرّب لون السماء الخام عبر أي فجوة بين قاعدة تضاريس الجبال المتعرجة والأرضية المسطحة (كان يظهر كخط/"نهر" غير متناسق)
+(function addHorizonHaze(){
+  var hazeMat = new THREE.MeshBasicMaterial({ color:0xb8935f, fog:true });
+  var hazePlane = new THREE.Mesh(new THREE.PlaneGeometry(GROUND_LEN, 110), hazeMat);
+  hazePlane.position.set(0, 40, -165); // خلف الجبال تماماً كي لا يحجب واجهتها، لكن ضمن نطاق الضباب ليتماهى مع تدرّج السماء
+  bgGroup.add(hazePlane);
+})();
 
 // غيوم تنجرف (billboards)
 function makeCloudTexture(){
