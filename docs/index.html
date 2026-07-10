@@ -45,7 +45,7 @@
   .status-content{ display:flex; align-items:center; gap:12px; }
   .status-strip.collapsed .status-content{ display:none; }
   .status-item{ display:flex; align-items:center; gap:5px; position:relative; }
-  .status-item.status-mute{ pointer-events:auto; cursor:pointer; font-size:15px; }
+  .status-item.status-mute, .status-item.status-edit{ pointer-events:auto; cursor:pointer; font-size:15px; }
   .status-ico{ font-size:12px; line-height:1; opacity:.85; }
   .hpbar{ width:52px; height:8px; border-radius:5px; background:rgba(0,0,0,.5); overflow:hidden; border:1px solid rgba(255,255,255,.1); }
   .hpbar > i{ display:block; height:100%; width:100%; border-radius:4px; background:linear-gradient(90deg,#4f8f26,#8ecb45); transition:width .15s ease; }
@@ -85,6 +85,30 @@
     cursor:pointer;
   }
   .install-btn.show{ display:flex; }
+
+  /* ===================== تخصيص أزرار التحكم ===================== */
+  body.controls-edit-mode canvas{ filter:brightness(.55) saturate(.7); }
+  .edit-toolbar{
+    display:none; position:absolute; z-index:16; top:calc(env(safe-area-inset-top) + 14px);
+    left:50%; transform:translateX(-50%);
+    flex-direction:column; align-items:center; gap:10px;
+    padding:12px 18px; max-width:min(92vw,420px);
+    pointer-events:auto;
+  }
+  .edit-toolbar.show{ display:flex; }
+  .et-hint{ font-size:12px; color:#e8e6d9; text-align:center; line-height:1.5; }
+  .et-row{ display:flex; align-items:center; gap:10px; width:100%; }
+  .et-row label{ font-size:11px; color:#c9c6b8; flex:none; width:52px; }
+  .et-row input[type="range"]{ flex:1; accent-color:#ffb020; }
+  .et-actions{ display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
+  .et-actions button{
+    pointer-events:auto; cursor:pointer; border:none; border-radius:9px;
+    padding:8px 13px; font-size:12px; font-weight:700; color:#e8e6d9;
+    background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.16);
+    font-family:inherit;
+  }
+  .et-actions button:active{ filter:brightness(1.3); }
+  #doneEditBtn{ background:linear-gradient(180deg,#ffc23e,#f0a010); color:#161a10; border-color:#c97e10; }
 
   /* ===================== شاشة تدوير الجهاز ===================== */
   .rotate-overlay{
@@ -135,9 +159,24 @@
   /* ===================== أزرار التحكم ===================== */
   .controls{ position:absolute; inset:0; z-index:11; pointer-events:none; }
 
-  .pad-move{
-    position:absolute; left:16px; bottom:calc(env(safe-area-inset-bottom) + 14px);
+  /* كل عنصر تحكّم مستقل الموضع (قابل للسحب والتحجيم فردياً في وضع التخصيص) */
+  .ctrl-el{
+    position:absolute;
+    transform:scale(var(--ctrl-scale,1)); transform-origin:center center;
+    opacity:var(--ctrl-opacity,1);
   }
+  .ctrl-el.dragging{
+    filter:brightness(1.25);
+    box-shadow:0 0 0 3px rgba(255,176,32,.6), 0 10px 26px rgba(0,0,0,.55) !important;
+    z-index:5;
+  }
+
+  #moveJoyZone{ left:16px; bottom:calc(env(safe-area-inset-bottom) + 14px); }
+  #aimJoyZone{ left:190px; bottom:calc(env(safe-area-inset-bottom) + 24px); }
+  #btnSpecial{ right:16px; bottom:calc(env(safe-area-inset-bottom) + 20px); }
+  #btnJump{ right:90px; bottom:calc(env(safe-area-inset-bottom) + 20px); }
+  #btnFire{ right:158px; bottom:calc(env(safe-area-inset-bottom) + 20px); }
+
   .joystick-zone{
     width:118px; height:118px; border-radius:50%; pointer-events:auto;
     background:radial-gradient(circle at 35% 30%, rgba(255,255,255,.07), rgba(0,0,0,.38));
@@ -145,6 +184,7 @@
     box-shadow:0 4px 14px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
     touch-action:none; -ms-touch-action:none;
   }
+  .joystick-zone.aim-zone{ width:92px; height:92px; }
   .joystick-handle{
     position:absolute; left:50%; top:50%; width:52px; height:52px; margin:-26px 0 0 -26px;
     border-radius:50%;
@@ -152,14 +192,7 @@
     border:1px solid rgba(255,255,255,.22);
     box-shadow:0 4px 10px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.12);
   }
-  .pad-aim{
-    position:absolute; left:190px; bottom:calc(env(safe-area-inset-bottom) + 20px);
-    display:flex; flex-direction:column; gap:12px;
-  }
-  .pad-actions{
-    position:absolute; right:16px; bottom:calc(env(safe-area-inset-bottom) + 20px);
-    display:flex; align-items:flex-end; gap:12px;
-  }
+  .aim-zone .joystick-handle{ width:40px; height:40px; margin:-20px 0 0 -20px; }
 
   .tbtn{
     pointer-events:auto; cursor:pointer;
@@ -170,11 +203,11 @@
     backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
     border:1px solid rgba(255,255,255,0.16);
     box-shadow:0 4px 14px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
-    transition:transform .07s ease, filter .07s ease;
+    transition:filter .07s ease;
     -webkit-user-select:none; user-select:none;
     touch-action:none; -ms-touch-action:none;
   }
-  .tbtn:active, .tbtn.on{ transform:scale(.9); filter:brightness(1.35); }
+  .tbtn:active, .tbtn.on{ transform:scale(calc(var(--ctrl-scale,1) * .9)); filter:brightness(1.35); }
 
   .btn-fire{
     width:82px; height:82px; font-size:14px; letter-spacing:.05em;
@@ -186,10 +219,9 @@
     background:radial-gradient(circle at 35% 30%, #4a6ea8, #223354 78%);
     border-color:#16233d;
   }
-  .btn-aim{ width:54px; height:54px; font-size:20px; }
 
   .btn-special{
-    width:62px; height:62px; font-size:11px; letter-spacing:.02em; position:relative;
+    width:62px; height:62px; font-size:11px; letter-spacing:.02em;
     background:radial-gradient(circle at 35% 30%, #ffd23e, #a8720f 78%);
     border-color:#7a4d08; box-shadow:0 6px 18px rgba(255,176,32,0.45);
   }
@@ -270,6 +302,7 @@
           <div class="reload-label" id="reloadLabel">إعادة تلقيم…</div>
         </div>
         <div class="status-item status-mute" id="muteBtn" title="الصوت">🔊</div>
+        <div class="status-item status-edit" id="editControlsBtn" title="تخصيص أزرار التحكم">⚙</div>
       </div>
     </div>
     <div class="panel-right glass">
@@ -279,6 +312,17 @@
   </div>
 
   <div class="install-btn glass" id="installBtn" title="تثبيت اللعبة">⬇</div>
+</div>
+
+<div class="edit-toolbar glass" id="editToolbar">
+  <div class="et-hint">اسحب أي زر لأي مكان تريده على الشاشة</div>
+  <div class="et-row"><label>الحجم</label><input type="range" id="ctrlScaleSlider" min="0.7" max="1.4" step="0.05" value="1"></div>
+  <div class="et-row"><label>الشفافية</label><input type="range" id="ctrlOpacitySlider" min="0.5" max="1" step="0.05" value="1"></div>
+  <div class="et-actions">
+    <button type="button" id="swapSidesBtn">🔁 تبديل الجهة</button>
+    <button type="button" id="resetLayoutBtn">استعادة الافتراضي</button>
+    <button type="button" id="doneEditBtn">تم ✓</button>
+  </div>
 </div>
 
 <div class="rotate-overlay" id="rotateOverlay">
@@ -293,23 +337,20 @@
 <div class="radar-arrow right" id="radarRight">▶</div>
 <div class="banner" id="stageBanner"></div>
 
-<!-- ===================== أزرار اللمس ===================== -->
-<div class="controls">
-  <div class="pad-move joystick-zone" id="moveJoyZone" aria-label="التحرك يمين/يسار">
+<!-- ===================== أزرار اللمس (كل عنصر مستقل الموضع، قابل للسحب في وضع التخصيص) ===================== -->
+<div class="controls" id="controlsLayer">
+  <div class="ctrl-el joystick-zone" id="moveJoyZone" aria-label="التحرك يمين/يسار">
     <div class="joystick-handle" id="moveJoyHandle"></div>
   </div>
-  <div class="pad-aim">
-    <div class="tbtn btn-aim" id="btnAimUp">▲</div>
-    <div class="tbtn btn-aim" id="btnAimDown">▼</div>
+  <div class="ctrl-el joystick-zone aim-zone" id="aimJoyZone" aria-label="رفع/خفض المدفع">
+    <div class="joystick-handle" id="aimJoyHandle"></div>
   </div>
-  <div class="pad-actions">
-    <div class="tbtn btn-special" id="btnSpecial" title="قذيفة خارقة للدروع — مرة واحدة كل مرحلة">
-      <span class="special-badge">1</span>
-      خارقة
-    </div>
-    <div class="tbtn btn-jump" id="btnJump">قفز</div>
-    <div class="tbtn btn-fire" id="btnFire">إطلاق</div>
+  <div class="ctrl-el tbtn btn-special" id="btnSpecial" title="قذيفة خارقة للدروع — مرة واحدة كل مرحلة">
+    <span class="special-badge">1</span>
+    خارقة
   </div>
+  <div class="ctrl-el tbtn btn-jump" id="btnJump">قفز</div>
+  <div class="ctrl-el tbtn btn-fire" id="btnFire">إطلاق</div>
 </div>
 
 <!-- ===================== شاشة البداية ===================== -->
@@ -320,8 +361,9 @@
     <div class="loading" id="loadingText">جارٍ تحميل المحرّك ثلاثي الأبعاد…</div>
     <button class="big-btn" id="startBtn" style="display:none">ابدأ المعركة</button>
     <div class="hint">
-      لمس: عصا التحكم للحركة يمين/يسار، وأزرار التصويب والإطلاق.<br>
+      لمس: عصا للحركة يمين/يسار، وعصا صغيرة لرفع/خفض المدفع، وأزرار الإطلاق/القفز/الخارقة.<br>
       كيبورد: ← → للحركة · ↑ ↓ لزاوية المدفع · مسافة للإطلاق · S للقفز.<br>
+      اضغط ⚙ أثناء اللعب لتحريك أي زر لمكانه المفضّل لديك أو تغيير حجمه.<br>
       انتبه لعداد الذخيرة — المدفع يحتاج إعادة تلقيم بعد كل 6 طلقات.
     </div>
   </div>
@@ -1530,10 +1572,94 @@ function startStage(){
 }
 
 /* ------------------------------------------------------------------ *
- *  9) الإدخال (لمس + كيبورد)
+ *  9) الإدخال (لمس + كيبورد) + تخصيص أزرار التحكم
  * ------------------------------------------------------------------ */
 var keys = { left:false, right:false, up:false, down:false, fire:false, jump:false };
-var joyAxis = 0; // محور تناظري من -1 (يسار) إلى 1 (يمين)، يأتي من عصا التحكم اللمسية
+var joyAxis = 0; // محور تناظري من -1 (يسار) إلى 1 (يمين)، يأتي من عصا الحركة اللمسية
+var aimAxis = 0;  // محور تناظري من -1 (خفض) إلى 1 (رفع)، يأتي من عصا التصويب اللمسية
+
+// ------- تخصيص التخطيط: سحب/تحجيم/شفافية أزرار اللمس، محفوظ محلياً عبر localStorage -------
+var CTRL_IDS = ['moveJoyZone','aimJoyZone','btnSpecial','btnJump','btnFire'];
+var CTRL_LAYOUT_KEY = 'tankAssaultControlLayout_v1';
+var controlsEditMode = false;
+var controlLayout = (function(){ try{ return JSON.parse(localStorage.getItem(CTRL_LAYOUT_KEY)) || {}; }catch(e){ return {}; } })();
+var controlScale = parseFloat(localStorage.getItem('tankAssaultCtrlScale')) || 1;
+var controlOpacity = parseFloat(localStorage.getItem('tankAssaultCtrlOpacity')) || 1;
+function saveControlLayout(){ try{ localStorage.setItem(CTRL_LAYOUT_KEY, JSON.stringify(controlLayout)); }catch(e){} }
+function saveControlScale(){ try{ localStorage.setItem('tankAssaultCtrlScale', controlScale); }catch(e){} }
+function saveControlOpacity(){ try{ localStorage.setItem('tankAssaultCtrlOpacity', controlOpacity); }catch(e){} }
+
+function applyControlLayout(){
+  CTRL_IDS.forEach(function(id){
+    var el = document.getElementById(id); var pos = controlLayout[id];
+    if(!pos) return; // لا يوجد تخصيص محفوظ لهذا العنصر — يبقى بموضعه الافتراضي من CSS
+    var w = el.offsetWidth || 60, h = el.offsetHeight || 60;
+    var left = Math.max(4, Math.min(window.innerWidth - w - 4, pos.leftPct*window.innerWidth));
+    var top = Math.max(4, Math.min(window.innerHeight - h - 4, pos.topPct*window.innerHeight));
+    // "auto" لا "" — الفراغ يسقط للقاعدة right/bottom في CSS، وبوجود اتجاه RTL يُهمَل left عندها (تحديد زائد)
+    el.style.right='auto'; el.style.bottom='auto'; el.style.left = left+'px'; el.style.top = top+'px';
+  });
+  var layer = document.getElementById('controlsLayer');
+  layer.style.setProperty('--ctrl-scale', controlScale);
+  layer.style.setProperty('--ctrl-opacity', controlOpacity);
+}
+
+function resetControlLayout(){
+  controlLayout = {}; controlScale = 1; controlOpacity = 1;
+  saveControlLayout(); saveControlScale(); saveControlOpacity();
+  CTRL_IDS.forEach(function(id){
+    var el = document.getElementById(id);
+    el.style.left=''; el.style.top=''; el.style.right=''; el.style.bottom='';
+  });
+  document.getElementById('ctrlScaleSlider').value = 1;
+  document.getElementById('ctrlOpacitySlider').value = 1;
+  applyControlLayout();
+}
+
+// يعكس مواضع كل الأزرار أفقياً (يمين↔يسار) — مناسب للاعبين العسراويين بضغطة واحدة
+function swapControlSides(){
+  CTRL_IDS.forEach(function(id){
+    var el = document.getElementById(id);
+    var r = el.getBoundingClientRect();
+    controlLayout[id] = { leftPct:(window.innerWidth - r.right)/window.innerWidth, topPct:r.top/window.innerHeight };
+  });
+  saveControlLayout();
+  applyControlLayout();
+}
+
+// سحب حر لأي زر تحكّم إلى أي مكان على الشاشة، فعّال فقط أثناء وضع التخصيص — يُسجَّل قبل مستمعي
+// اللعب (bindHold/bindJoystick) ويوقف انتشار الحدث عبر stopImmediatePropagation كي لا يتحرك
+// اللاعب أو يُطلق النار أثناء ترتيب أزراره
+var ctrlDragOffset = {};
+function bindControlDrag(el){
+  el.addEventListener('pointerdown', function(e){
+    if(!controlsEditMode) return;
+    e.stopImmediatePropagation(); e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    var r = el.getBoundingClientRect();
+    ctrlDragOffset[el.id] = { x:e.clientX-r.left, y:e.clientY-r.top };
+    el.style.right='auto'; el.style.bottom='auto'; el.style.left = r.left+'px'; el.style.top = r.top+'px';
+    el.classList.add('dragging');
+  });
+  el.addEventListener('pointermove', function(e){
+    if(!controlsEditMode || !ctrlDragOffset[el.id]) return;
+    e.stopImmediatePropagation(); e.preventDefault();
+    var off = ctrlDragOffset[el.id], w = el.offsetWidth, h = el.offsetHeight;
+    el.style.left = Math.max(4, Math.min(window.innerWidth - w - 4, e.clientX - off.x)) + 'px';
+    el.style.top = Math.max(4, Math.min(window.innerHeight - h - 4, e.clientY - off.y)) + 'px';
+  });
+  function endDrag(e){
+    if(!controlsEditMode || !ctrlDragOffset[el.id]) return;
+    e.stopImmediatePropagation(); e.preventDefault();
+    delete ctrlDragOffset[el.id]; el.classList.remove('dragging');
+    var r = el.getBoundingClientRect();
+    controlLayout[el.id] = { leftPct:r.left/window.innerWidth, topPct:r.top/window.innerHeight };
+    saveControlLayout();
+  }
+  el.addEventListener('pointerup', endDrag);
+  el.addEventListener('pointercancel', endDrag);
+}
+CTRL_IDS.forEach(function(id){ bindControlDrag(document.getElementById(id)); });
 
 function bindHold(id, on){
   var el = document.getElementById(id);
@@ -1543,12 +1669,12 @@ function bindHold(id, on){
   el.addEventListener('pointercancel', set(false));
   el.addEventListener('pointerleave', set(false));
 }
-bindHold('btnAimUp','up'); bindHold('btnAimDown','down');
 bindHold('btnFire','fire'); bindHold('btnJump','jump');
 document.getElementById('btnSpecial').addEventListener('pointerdown', function(e){ e.preventDefault(); fireSpecialShell(); });
 
-// عصا تحكم تناظرية للحركة يمين/يسار (تدعم اللمس المتعدد عبر Pointer Events)
-function bindJoystick(zoneId, handleId, onChange){
+// عصا تحكم تناظرية أفقية (حركة) أو عمودية (تصويب) — تدعم اللمس المتعدد عبر Pointer Events
+function bindJoystick(zoneId, handleId, onChange, axis){
+  axis = axis || 'x';
   var zone = document.getElementById(zoneId);
   var handle = document.getElementById(handleId);
   var radius = 33, activeId = null, cx = 0, cy = 0;
@@ -1564,15 +1690,21 @@ function bindJoystick(zoneId, handleId, onChange){
   function drag(e){
     if(e.pointerId !== activeId) return;
     e.preventDefault();
-    var dx = Math.max(-radius, Math.min(radius, e.clientX - cx));
-    handle.style.transform = 'translateX(' + dx + 'px)';
-    onChange(dx / radius);
+    if(axis==='y'){
+      var dy = Math.max(-radius, Math.min(radius, e.clientY - cy));
+      handle.style.transform = 'translateY(' + dy + 'px)';
+      onChange(-dy / radius); // سحب لأعلى = قيمة موجبة (رفع المدفع)
+    } else {
+      var dx = Math.max(-radius, Math.min(radius, e.clientX - cx));
+      handle.style.transform = 'translateX(' + dx + 'px)';
+      onChange(dx / radius);
+    }
   }
   function release(e){
     if(e.pointerId !== activeId) return;
     e.preventDefault();
     activeId = null;
-    handle.style.transform = 'translateX(0px)';
+    handle.style.transform = axis==='y' ? 'translateY(0px)' : 'translateX(0px)';
     onChange(0);
   }
   zone.addEventListener('pointerdown', start);
@@ -1582,6 +1714,7 @@ function bindJoystick(zoneId, handleId, onChange){
   zone.addEventListener('pointerleave', release);
 }
 bindJoystick('moveJoyZone', 'moveJoyHandle', function(v){ joyAxis = v; });
+bindJoystick('aimJoyZone', 'aimJoyHandle', function(v){ aimAxis = v; }, 'y');
 
 window.addEventListener('keydown', function(e){
   if(e.code==='ArrowLeft') keys.left=true;
@@ -1599,6 +1732,35 @@ window.addEventListener('keyup', function(e){
   if(e.code==='Space') keys.fire=false;
   if(e.code==='KeyS') keys.jump=false;
 });
+
+// ------- ربط زر التخصيص (⚙) وشريط أدواته -------
+document.getElementById('editControlsBtn').addEventListener('click', function(){
+  controlsEditMode = true;
+  joyAxis = 0; aimAxis = 0; keys.fire = keys.jump = keys.up = keys.down = false;
+  document.getElementById('btnFire').classList.remove('on');
+  document.getElementById('btnJump').classList.remove('on');
+  document.getElementById('editToolbar').classList.add('show');
+  document.body.classList.add('controls-edit-mode');
+});
+document.getElementById('doneEditBtn').addEventListener('click', function(){
+  controlsEditMode = false;
+  document.getElementById('editToolbar').classList.remove('show');
+  document.body.classList.remove('controls-edit-mode');
+});
+document.getElementById('resetLayoutBtn').addEventListener('click', resetControlLayout);
+document.getElementById('swapSidesBtn').addEventListener('click', swapControlSides);
+document.getElementById('ctrlScaleSlider').value = controlScale;
+document.getElementById('ctrlOpacitySlider').value = controlOpacity;
+document.getElementById('ctrlScaleSlider').addEventListener('input', function(e){
+  controlScale = parseFloat(e.target.value); saveControlScale();
+  document.getElementById('controlsLayer').style.setProperty('--ctrl-scale', controlScale);
+});
+document.getElementById('ctrlOpacitySlider').addEventListener('input', function(e){
+  controlOpacity = parseFloat(e.target.value); saveControlOpacity();
+  document.getElementById('controlsLayer').style.setProperty('--ctrl-opacity', controlOpacity);
+});
+applyControlLayout();
+window.addEventListener('resize', applyControlLayout);
 
 /* ------------------------------------------------------------------ *
  *  10) تحديث اللعبة (المنطق)
@@ -1641,8 +1803,9 @@ function updatePlayer(dt){
   // زاوية المدفع (الارتفاع/الانخفاض). عند الاستدارة يسارًا 180° حول Y، دوران الماسورة المحلي حول Z
   // يبقى دون عكس إشارة — الدوران الأصلي للهيكل الأب هو ما يعكس المحور السيني تلقائياً، فتبقى "لأعلى" لأعلى فعلياً
   // (عكس الإشارة هنا سابقاً كان الخلل الذي يمنع رفع الماسورة نحو السماء أثناء المواجهة يساراً)
-  if(keys.up) player.aim = Math.min(1.15, player.aim + 1.4*dt);
-  if(keys.down) player.aim = Math.max(-0.15, player.aim - 1.4*dt);
+  // الكيبورد (أسهم) له الأولوية عند الضغط، وإلا فمحور عصا التصويب اللمسية التناظري
+  var aimInput = (keys.up||keys.down) ? ((keys.up?1:0)-(keys.down?1:0)) : aimAxis;
+  if(aimInput) player.aim = Math.max(-0.15, Math.min(1.15, player.aim + aimInput*1.4*dt));
   var facingSign = player.dir >= 0 ? 1 : -1;
   player.tank.userData.barrelPivot.rotation.z = player.aim;
   updateTankRecoil(player.tank, dt);
@@ -2137,7 +2300,7 @@ function loop(){
   requestAnimationFrame(loop);
   var dt = Math.min(0.033, clock.getDelta());
 
-  if(state==='playing'){
+  if(state==='playing' && !controlsEditMode){
     updatePlayer(dt);
     updateEnemies(dt);
     updateProjectiles(dt);
