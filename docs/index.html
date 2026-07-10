@@ -281,6 +281,14 @@
     flex-shrink:0;
   }
   .big-btn:active{ transform:scale(.96); }
+  .big-btn:disabled{ opacity:.4; pointer-events:none; }
+
+  .continue-btn{ position:static; width:100%; font-size:13px; }
+  .continue-btn.ad{ background:linear-gradient(180deg,#5a9bdb,#2a5f9e); color:#eef6ff; box-shadow:0 8px 22px rgba(58,120,200,0.35); }
+  .continue-btn.coin{ background:linear-gradient(180deg,#ffc23e,#f0a010); color:#161a10; }
+  .continue-skip{
+    pointer-events:auto; cursor:pointer; text-decoration:underline; margin-top:4px;
+  }
 
   .upgrades{ display:flex; flex-direction:column; gap:6px; width:100%; margin-top:2px; }
   .upg-row{
@@ -381,6 +389,26 @@
       اضغط ⚙ أثناء اللعب لتحريك أي زر لمكانه المفضّل لديك أو تغيير حجمه.<br>
       انتبه لعداد الذخيرة — المدفع يحتاج إعادة تلقيم بعد كل 6 طلقات.
     </div>
+  </div>
+</div>
+
+<!-- ===================== شاشة عرض الاستمرار بعد التدمير ===================== -->
+<div class="screen hidden" id="continueScreen">
+  <div class="card glass">
+    <div class="title lose">دبابتك دُمّرت!</div>
+    <div class="stats-line">تكمل من نفس مكانك خلال <b id="continueTimer">8</b> ثوانٍ؟</div>
+    <div class="subtitle">رصيدك الحالي ◆ <b id="continueCoinBalance">0</b></div>
+    <button class="big-btn continue-btn ad" id="continueAdBtn">🎬 شاهد إعلان (+٪20 صحة)</button>
+    <button class="big-btn continue-btn coin" id="continueCoinBtn">◆ استمر بصحة كاملة مقابل <span id="continueCoinCost">15</span></button>
+    <div class="hint continue-skip" id="continueSkipBtn">تخطَّ، أنهِ اللعبة</div>
+  </div>
+</div>
+
+<!-- ===================== محاكاة عرض إعلان مكافأة (مكان الإعلان الحقيقي لاحقاً) ===================== -->
+<div class="screen hidden" id="adOverlay">
+  <div class="card glass">
+    <div class="title">📺 إعلان تجريبي</div>
+    <div class="subtitle">هذا مكان مشغّل الإعلان الحقيقي لاحقاً (مثل Google AdSense for Games).<br>ينتهي العرض خلال <b id="adOverlayTimer">3</b>…</div>
   </div>
 </div>
 
@@ -2069,7 +2097,7 @@ function updateProjectiles(dt){
       if(Math.abs(p.mesh.position.x - player.x) < 2.4 && Math.abs(p.mesh.position.y - player.tank.position.y - 1) < 2.4){
         player.hp -= p.dmg; hit=true; playSound('hit');
         camShake = Math.max(camShake, 0.5); camFovPunch = Math.max(camFovPunch, 3); flashDamage();
-        if(player.hp<=0){ player.hp=0; onGameOver(); }
+        if(player.hp<=0){ player.hp=0; offerContinue(); }
         updateHUD();
       }
     }
@@ -2215,6 +2243,89 @@ function hideReticleRadar(){
 function show(id){ document.getElementById(id).classList.remove('hidden'); }
 function hide(id){ document.getElementById(id).classList.add('hidden'); }
 
+// ------- الاستمرار بعد التدمير: شراء بالنقاط المتجمعة أو مشاهدة إعلان مكافأة -------
+var CONTINUE_SECONDS = 8;
+var continuesUsedThisRun = 0; // يصفَّر فقط عند بدء محاولة جديدة كاملة (retryBtn)، لا بين المراحل — يجعل التكلفة تتصاعد كل ما استمر اللاعب أكثر بنفس المحاولة
+var continueCountdownId = null;
+function continueCost(){ return Math.round(15 * Math.pow(1.5, continuesUsedThisRun)); }
+
+function offerContinue(){
+  state = 'continue';
+  clearInterval(continueCountdownId);
+  var remaining = CONTINUE_SECONDS;
+  document.getElementById('continueTimer').textContent = remaining;
+  document.getElementById('continueCoinBalance').textContent = coins;
+  var cost = continueCost();
+  document.getElementById('continueCoinCost').textContent = cost;
+  document.getElementById('continueCoinBtn').disabled = coins < cost;
+  show('continueScreen');
+  continueCountdownId = setInterval(function(){
+    remaining--;
+    document.getElementById('continueTimer').textContent = Math.max(0, remaining);
+    if(remaining<=0){
+      clearInterval(continueCountdownId);
+      hide('continueScreen');
+      onGameOver();
+    }
+  }, 1000);
+}
+
+// ينفّذ الاستمرار الفعلي: healFraction نسبة شفاء من الصحة القصوى (يُستخدم لخيار الإعلان)،
+// أو coinCostPaid عدد النقاط المخصومة مقابل استمرار بصحة كاملة (يُستخدم لخيار الدفع بالنقاط)
+function resolveContinue(healFraction, coinCostPaid){
+  clearInterval(continueCountdownId);
+  hide('continueScreen');
+  if(coinCostPaid){
+    coins -= coinCostPaid; continuesUsedThisRun++; player.hp = player.maxHp;
+  } else {
+    player.hp = Math.min(player.maxHp, player.hp + player.maxHp*healFraction);
+  }
+  updateHUD();
+  state = 'playing';
+}
+
+// محاكاة عرض إعلان مكافأة — واجهة جاهزة لاستبدالها بشبكة إعلانات حقيقية (مثل Google AdSense for
+// Games H5) لاحقاً بنفس التوقيع: استدعِ callback(true) عند إتمام المشاهدة، callback(false) إن أُغلق مبكراً
+function showRewardedAd(callback){
+  show('adOverlay');
+  var secs = 3;
+  document.getElementById('adOverlayTimer').textContent = secs;
+  var iv = setInterval(function(){
+    secs--;
+    document.getElementById('adOverlayTimer').textContent = Math.max(0, secs);
+    if(secs<=0){
+      clearInterval(iv);
+      hide('adOverlay');
+      callback(true);
+    }
+  }, 1000);
+}
+
+document.getElementById('continueAdBtn').addEventListener('click', function(){
+  // ألغِ عدّاد مهلة القرار فور الالتزام بمشاهدة الإعلان — لا يجوز أن تنتهي المهلة أثناء المشاهدة نفسها
+  // (كانت تنتهي بالخلفية أحياناً وتُظهر شاشة الهزيمة فوق الإعلان قبل أن يُتمّ اللاعب مشاهدته)
+  clearInterval(continueCountdownId);
+  hide('continueScreen');
+  var btn = this;
+  btn.disabled = true; var origText = btn.textContent; btn.textContent = 'جارٍ عرض الإعلان…';
+  showRewardedAd(function(success){
+    btn.disabled = false; btn.textContent = origText;
+    if(success) resolveContinue(0.2, 0);
+    else offerContinue(); // أُغلق الإعلان مبكراً — أعطِ اللاعب فرصة استمرار جديدة بمهلة كاملة
+  });
+});
+document.getElementById('continueCoinBtn').addEventListener('click', function(){
+  var cost = continueCost();
+  if(coins < cost) return;
+  playSound('click');
+  resolveContinue(1, cost);
+});
+document.getElementById('continueSkipBtn').addEventListener('click', function(){
+  clearInterval(continueCountdownId);
+  hide('continueScreen');
+  onGameOver();
+});
+
 function onGameOver(){
   state='over';
   document.getElementById('goScore').textContent=score;
@@ -2258,7 +2369,7 @@ document.getElementById('startBtn').addEventListener('click', function(){
 });
 document.getElementById('retryBtn').addEventListener('click', function(){
   playSound('click'); hide('gameOverScreen'); enterImmersiveMode();
-  stage=1; score=0; coins=0;
+  stage=1; score=0; coins=0; continuesUsedThisRun=0;
   upgrades.damage.lvl=0; upgrades.health.lvl=0; upgrades.speed.lvl=0; upgrades.reload.lvl=0; applyUpgrades();
   startStage(); state='playing';
 });
