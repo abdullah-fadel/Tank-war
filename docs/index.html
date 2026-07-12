@@ -1175,12 +1175,14 @@ function makeEnemyTank(opts){
   var tank = wrapLoadedEnemyModel(enemyTankTemplate.clone(true));
   tank.userData.scale = opts.scale;
   tank.scale.setScalar(opts.scale);
-  // نستنسخ مواد كل دبابة عدو على حدة (بدل مشاركتها) لنتمكّن من تلوينها فردياً وإضاءتها عند الغضب (الزعيم)
+  // نستنسخ مواد كل دبابة عدو على حدة (بدل مشاركتها) لنتمكّن من إضاءتها عند الغضب (الزعيم) دون التأثير
+  // على بقية النسخ. لا نستبدل لون المادة بلون توحيد (tint) كما كان يحدث سابقاً — النموذج الحقيقي يملك
+  // مواد وتفاصيل متعددة (معدن/جنزير/عدسات) وتوحيد لونها بالكامل كان يجعله يبدو مسطّحاً وعادياً؛ تمييز
+  // الأنواع (خفيف/ثقيل/زعيم) يبقى عبر الحجم (scale) وتوهّج الغضب فقط
   var hullMaterials = [];
   tank.userData.hull.traverse(function(o){
     if(o.isMesh){
       o.material = o.material.clone();
-      if(opts.tint != null) o.material.color.setHex(opts.tint);
       hullMaterials.push(o.material);
     }
   });
@@ -1190,8 +1192,9 @@ function makeEnemyTank(opts){
 loadEnemyTankModel();
 
 // عجلة دفاع جوي صديقة (9K31 Strela-1) — وحدة دعم ترافق اللاعب، ترصد طيران العدو (المروحيات) تلقائياً
-// وتطلق عليه صواريخ موجَّهة (Homing) دون أي تدخل من اللاعب. النموذج مُصدَّر بمقياس واقعي ومحوره
-// الأمامي -Z، فنرويده ليتوافق مع محور +X ونصغّره لحجم مقارب لبقية مركبات اللعبة.
+// وتطلق عليه صواريخ موجَّهة (Homing) دون أي تدخل من اللاعب. النموذج مُصدَّر بمقياس واقعي؛ نصغّره لحجم
+// مقارب لبقية مركبات اللعبة، ونرويده بزاوية مُتحقَّق منها فعلياً داخل اللعبة (+90°) كي تواجه مقدمتها
+// محور +X (اتجاه المواجهة الافتراضي نفسه المستخدم لبقية المركبات عند rotation.y = 0).
 var SAM_MODEL_URL = 'models/9k31_strela1_sam.glb';
 var SAM_MODEL_SCALE = 0.25; // كانت 0.45 تجعلها أكبر بكثير من بقية المركبات مقارنةً بدبابة اللاعب
 var SAM_FOLLOW_OFFSET_X = -9;   // تتموضع خلف اللاعب قليلاً بدل الانضمام لصفه مباشرة
@@ -1205,7 +1208,7 @@ var samMissiles = [];    // {mesh, target, vel, life}
 
 function wrapLoadedSamModel(model){
   var launchPoint = new THREE.Object3D();
-  launchPoint.position.set(0.06, 2.58, -0.96);
+  launchPoint.position.set(-0.06, 2.58, 0.96);
   var root = new THREE.Group();
   root.add(model);
   root.add(launchPoint);
@@ -1217,7 +1220,7 @@ function loadSamVehicleModel(){
   var loader = new THREE.GLTFLoader();
   loader.load(SAM_MODEL_URL, function(gltf){
     var model = gltf.scene;
-    model.rotation.y = -Math.PI / 2;
+    model.rotation.y = Math.PI / 2;
     model.scale.setScalar(SAM_MODEL_SCALE);
     // صاروخ احتياطي منفصل جغرافياً في النموذج الأصلي (كان يظهر طايفاً بجانب العجلة) — يُحذف لأن
     // الصواريخ الفعلية تُبنى وتُطلَق إجرائياً بدل الاعتماد عليه
@@ -1259,7 +1262,7 @@ function updateSamVehicle(dt){
   var maxStep = SAM_FOLLOW_SPEED * dt;
   samVehicle.x += Math.max(-maxStep, Math.min(maxStep, diff));
   samVehicle.tank.position.set(samVehicle.x, groundHeightAt(samVehicle.x), 0);
-  samVehicle.tank.rotation.y = 0; // يواجه دوماً يمين الشاشة (نفس اتجاه مواجهة اللاعب الافتراضي)
+  samVehicle.tank.rotation.y = player.dir >= 0 ? 0 : Math.PI; // تدور لتواجه نفس جهة اللاعب دوماً بدل التجمّد باتجاه واحد
 
   samVehicle.fireCd -= dt;
   if(samVehicle.fireCd > 0) return;
@@ -1861,9 +1864,9 @@ function spawnEnemy(isBoss){
   if(!isBoss && stage>=2 && Math.random()<0.25){ spawnHelicopter(); return; }
 
   var opts = isBoss
-    ? { body:0x8a1f1f, turret:0x5a1212, scale:1.45, tint:0xb35a4a }
-    : (Math.random()<0.35 ? { body:0x6d4a3a, turret:0x3a251c, scale:1.25, tint:0xcdb896 } : { body:0x8a3a34, turret:0x4a1c18, scale:1.0, tint:0xffffff });
-  // كل الأعداء (بما فيها الزعيم) يستخدمون نفس نموذج T-34 الحقيقي — بحجم/تلوين مختلف للزعيم بدل هيكل إجرائي مغاير الشكل
+    ? { body:0x8a1f1f, turret:0x5a1212, scale:1.45 }
+    : (Math.random()<0.35 ? { body:0x6d4a3a, turret:0x3a251c, scale:1.25 } : { body:0x8a3a34, turret:0x4a1c18, scale:1.0 });
+  // كل الأعداء (بما فيها الزعيم) يستخدمون نفس نموذج الدبابة الحقيقي — بحجم مختلف للزعيم/الثقيل بدل هيكل إجرائي مغاير الشكل
   var tank = makeEnemyTank(opts);
   var ex = player.x + 55 + Math.random()*30;
   tank.rotation.y = Math.PI; // مواجهة اللاعب (يسار)
