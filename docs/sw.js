@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tank-assault-v12';
+const CACHE_NAME = 'tank-assault-v13';
 const APP_SHELL = [
   './',
   './index.html',
