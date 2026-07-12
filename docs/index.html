@@ -1122,23 +1122,26 @@ function loadPlayerTankModel(onDone){
   });
 }
 
-// نموذج T-34 ثلاثي الأبعاد حقيقي لدبابات العدو (بدل الهيكل الإجرائي البسيط) — نفس مبدأ نموذج اللاعب:
+// نموذج دبابة عدو واقعي من الحقبة السوفيتية (بدل الهيكل الإجرائي البسيط) — نفس مبدأ نموذج اللاعب:
 // شبكة مدمجة (لا يمكن فصل الماسورة عن البرج حركياً)، مع عقد تحكّم غير مرئية بمكان الماسورة الحقيقي.
 // يُحمَّل مرة واحدة كقالب (template) ثم يُستنسخ لكل دبابة عدو جديدة (خفيف على الذاكرة والأداء).
-var ENEMY_MODEL_URL = 'models/t34.glb';
+var ENEMY_MODEL_URL = 'models/fictional_cold_war_tank.glb';
+// النموذج مُصدَّر بمقياس واقعي (~10.7م من المؤخرة إلى طرف الماسورة) ومحوره الأمامي +Z؛
+// نصغّره ليطابق حجم دبابات اللعبة وندويره ليتوافق مع محور +X (اتجاه الحركة/الإطلاق المعتمد في الكود)
+var ENEMY_MODEL_SCALE = 0.64;
 var enemyTankTemplate = null;
 function wrapLoadedEnemyModel(model){
   var barrelPivot = new THREE.Group();
-  barrelPivot.position.set(0.65, 1.24, 0);
+  barrelPivot.position.set(0.75, 1.12, 0);
   var muzzle = new THREE.Object3D();
-  muzzle.position.set(1.79, 0, 0);
+  muzzle.position.set(3.4, 0, 0);
   barrelPivot.add(muzzle);
 
   var turretRef = new THREE.Object3D();
-  turretRef.position.set(-0.33, 1.33, 0);
+  turretRef.position.set(-0.32, 1.47, 0);
 
   var exhaustTip = new THREE.Object3D();
-  exhaustTip.position.set(-2.17, 0.88, -0.31);
+  exhaustTip.position.set(-2.62, 0.83, -0.58);
 
   var root = new THREE.Group();
   root.add(model);
@@ -1157,10 +1160,13 @@ function loadEnemyTankModel(){
   if(typeof THREE.GLTFLoader === 'undefined') return;
   var loader = new THREE.GLTFLoader();
   loader.load(ENEMY_MODEL_URL, function(gltf){
-    gltf.scene.traverse(function(o){ if(o.isMesh){ o.castShadow = true; o.receiveShadow = true; } });
-    enemyTankTemplate = gltf.scene;
+    var model = gltf.scene;
+    model.rotation.y = Math.PI / 2;
+    model.scale.setScalar(ENEMY_MODEL_SCALE);
+    model.traverse(function(o){ if(o.isMesh){ o.castShadow = true; o.receiveShadow = true; } });
+    enemyTankTemplate = model;
   }, undefined, function(err){
-    console.warn('[TankAssault] تعذّر تحميل نموذج دبابة العدو T-34، سيُستخدم النموذج الإجرائي البديل.', err);
+    console.warn('[TankAssault] تعذّر تحميل نموذج دبابة العدو، سيُستخدم النموذج الإجرائي البديل.', err);
   });
 }
 // يُستنسخ كل جسم فرعي (النموذج + خرائطه) بأمان لأنه بلا عظام/حركة هيكلية، والمواد تبقى مشتركة بين النسخ لتوفير الذاكرة
@@ -1182,6 +1188,131 @@ function makeEnemyTank(opts){
   return tank;
 }
 loadEnemyTankModel();
+
+// عجلة دفاع جوي صديقة (9K31 Strela-1) — وحدة دعم ترافق اللاعب، ترصد طيران العدو (المروحيات) تلقائياً
+// وتطلق عليه صواريخ موجَّهة (Homing) دون أي تدخل من اللاعب. النموذج مُصدَّر بمقياس واقعي ومحوره
+// الأمامي -Z، فنرويده ليتوافق مع محور +X ونصغّره لحجم مقارب لبقية مركبات اللعبة.
+var SAM_MODEL_URL = 'models/9k31_strela1_sam.glb';
+var SAM_MODEL_SCALE = 0.45;
+var SAM_FOLLOW_OFFSET_X = -9;   // تتموضع خلف اللاعب قليلاً بدل الانضمام لصفه مباشرة
+var SAM_DETECT_RANGE = 42;      // مدى رصد طيران العدو
+var SAM_FIRE_COOLDOWN = 3.2;
+var SAM_MISSILE_SPEED = 30;
+var SAM_MISSILE_TURN_RATE = 2.6; // معدّل توجيه الصاروخ نحو الهدف (كلما زاد، انعطف أسرع خلف طائرة مناورة)
+var samVehicle = null;   // {tank, x, fireCd}
+var samMissiles = [];    // {mesh, target, vel, life}
+
+function wrapLoadedSamModel(model){
+  var launchPoint = new THREE.Object3D();
+  launchPoint.position.set(0.1, 4.65, -1.72);
+  var root = new THREE.Group();
+  root.add(model);
+  root.add(launchPoint);
+  root.userData = { launchPoint: launchPoint };
+  return root;
+}
+function loadSamVehicleModel(){
+  if(typeof THREE.GLTFLoader === 'undefined') return;
+  var loader = new THREE.GLTFLoader();
+  loader.load(SAM_MODEL_URL, function(gltf){
+    var model = gltf.scene;
+    model.rotation.y = -Math.PI / 2;
+    model.scale.setScalar(SAM_MODEL_SCALE);
+    model.traverse(function(o){ if(o.isMesh){ o.castShadow = true; o.receiveShadow = true; } });
+    var tank = wrapLoadedSamModel(model);
+    tank.position.set(player.x + SAM_FOLLOW_OFFSET_X, groundHeightAt(player.x + SAM_FOLLOW_OFFSET_X), 0);
+    scene.add(tank);
+    samVehicle = { tank: tank, x: tank.position.x, fireCd: 1.5 };
+  }, undefined, function(err){
+    console.warn('[TankAssault] تعذّر تحميل نموذج عجلة الدفاع الجوي (Strela-1)، ستُستبعد وحدة الدعم من هذه الجلسة.', err);
+  });
+}
+loadSamVehicleModel();
+
+// شكل الصاروخ الموجَّه (9M37) يُبنى إجرائياً (مخروط + أسطوانة) بدل الاعتماد على تفريغ جزء من نموذج
+// العجلة، لأن ذلك الجزء مُصدَّر بزاوية عشوائية ضمن مشهد Sketchfab الأصلي ولا يملك محوراً أمامياً واضحاً
+var samMissileTemplate = null;
+function buildSamMissileMesh(){
+  if(!samMissileTemplate){
+    var mat = new THREE.MeshStandardMaterial({ color:0xd8dee8, emissive:0x2a6bdd, emissiveIntensity:0.5, roughness:0.5 });
+    samMissileTemplate = new THREE.Group();
+    var body = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1.0, 8), mat);
+    body.rotation.z = Math.PI/2; body.position.x = 0;
+    var tip = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.3, 8), mat);
+    tip.rotation.z = -Math.PI/2; tip.position.x = 0.65;
+    samMissileTemplate.add(body); samMissileTemplate.add(tip);
+  }
+  return samMissileTemplate.clone(true);
+}
+
+// تتبع موقع اللاعب بلطف (Lerp) بدل الالتصاق الفوري، وترصد أقرب طائرة عدو ضمن مداها لإطلاق صاروخ عليها
+function updateSamVehicle(dt){
+  if(!samVehicle) return;
+  var desiredX = player.x + SAM_FOLLOW_OFFSET_X;
+  samVehicle.x += (desiredX - samVehicle.x) * Math.min(1, dt*1.2);
+  samVehicle.tank.position.set(samVehicle.x, groundHeightAt(samVehicle.x), 0);
+  samVehicle.tank.rotation.y = 0; // يواجه دوماً يمين الشاشة (نفس اتجاه مواجهة اللاعب الافتراضي)
+
+  samVehicle.fireCd -= dt;
+  if(samVehicle.fireCd > 0) return;
+
+  var best = null, bestDist = SAM_DETECT_RANGE;
+  for(var i=0;i<enemies.length;i++){
+    var e = enemies[i];
+    if(!e.isHeli) continue;
+    var d = Math.abs(e.x - samVehicle.x);
+    if(d < bestDist){ bestDist = d; best = e; }
+  }
+  if(best){
+    fireSamMissile(best);
+    samVehicle.fireCd = SAM_FIRE_COOLDOWN;
+  }
+}
+
+function fireSamMissile(target){
+  var launchPos = new THREE.Vector3();
+  samVehicle.tank.userData.launchPoint.getWorldPosition(launchPos);
+  var mesh = buildSamMissileMesh();
+  mesh.position.copy(launchPos);
+  scene.add(mesh);
+  var targetPos = new THREE.Vector3(target.x, target.tank.position.y + 0.6, target.tank.position.z||0);
+  var dir = targetPos.clone().sub(launchPos).normalize();
+  samMissiles.push({ mesh:mesh, target:target, vel: dir.multiplyScalar(SAM_MISSILE_SPEED), life:4.5 });
+  muzzleFlash(launchPos, dir);
+  playSound('fire', worldPan(launchPos.x), false, false);
+}
+
+// توجيه الصاروخ تدريجياً (Lerp على المتجه) نحو الهدف المتحرك بدل انعطاف فوري، لمحاكاة صاروخ حقيقي محدود المناورة
+function updateSamMissiles(dt){
+  for(var i=samMissiles.length-1;i>=0;i--){
+    var m = samMissiles[i];
+    var alive = m.target && enemies.indexOf(m.target) !== -1 && m.target.hp > 0;
+    var hit = false;
+    if(alive){
+      var targetPos = new THREE.Vector3(m.target.x, m.target.tank.position.y + 0.6, m.target.tank.position.z||0);
+      var toTarget = targetPos.clone().sub(m.mesh.position);
+      var dist = toTarget.length();
+      if(dist < 1.6){
+        m.target.hp = 0; // إصابة مباشرة مؤكّدة — يتكفّل updateEnemies() بالانفجار والمكافأة وإزالة الهدف
+        hit = true;
+      } else {
+        toTarget.normalize().multiplyScalar(SAM_MISSILE_SPEED);
+        m.vel.lerp(toTarget, Math.min(1, dt*SAM_MISSILE_TURN_RATE));
+      }
+    }
+    m.mesh.position.addScaledVector(m.vel, dt);
+    m.mesh.rotation.z = Math.atan2(m.vel.y, m.vel.x);
+    m.mesh.rotation.y = Math.atan2(-m.vel.z, Math.abs(m.vel.x));
+    m.life -= dt;
+    if(Math.random()<0.7) spawnParticle(m.mesh.position.x, m.mesh.position.y, m.mesh.position.z, 0xd8e4ff, 0.35, 0.3, 0,0,0, false);
+
+    if(hit || !alive || m.life<=0){
+      if(hit) explosion(m.mesh.position.x, m.mesh.position.y, m.mesh.position.z, false);
+      scene.remove(m.mesh);
+      samMissiles.splice(i,1);
+    }
+  }
+}
 
 /* ------------------------------------------------------------------ *
  *  5) نظام الجزيئات (Particles): انفجار، دخان، غبار، وميض
@@ -1763,6 +1894,7 @@ function startStage(){
   enemies.forEach(function(e){ scene.remove(e.tank); scene.remove(e.hpBar); if(e.engineAudio) stopHeliEngineSound(e.engineAudio); });
   enemies = [];
   projectiles.forEach(function(p){ scene.remove(p.mesh); }); projectiles = [];
+  samMissiles.forEach(function(m){ scene.remove(m.mesh); }); samMissiles = [];
   bossSpawned = false; stageClearing = false;
   // المرحلة الأولى سهلة عمداً (عددان فقط قبل الزعيم) للتعرّف على أسلوب اللعب، ثم تصاعد تدريجي أهدأ من السابق —
   // التحدي الإضافي بالمراحل المتقدمة يأتي أساساً من صحة الأعداء ووتيرة ظهورهم والعوائق/الطقس، لا من الكثرة العددية وحدها
@@ -2141,7 +2273,7 @@ function updateGroundEnemy(e, dt){
   // بدل صيغة ثابتة تجعل الماسورة تبدو موجّهة للأعلى دوماً بلا علاقة بموقع اللاعب الفعلي — بتصويب سلس (Lerp)
   // لا حاجة لعكس الإشارة حسب جهة المواجهة — دوران الهيكل الأب (rotation.y) يتكفّل بعكس المحور السيني تلقائياً
   var bp = e.tank.userData.barrelPivot;
-  var shooterY = e.tank.position.y + 1.24, targetY = player.tank.position.y + 0.9;
+  var shooterY = e.tank.position.y + 1.12, targetY = player.tank.position.y + 0.9;
   var aimAng = computeBallisticAngle(absD, targetY - shooterY, 34, 26);
   bp.rotation.z += (aimAng - bp.rotation.z) * Math.min(1, dt*4.5);
 
@@ -2642,6 +2774,8 @@ function loop(){
     updatePlayer(dt);
     updateEnemies(dt);
     updateProjectiles(dt);
+    updateSamVehicle(dt);
+    updateSamMissiles(dt);
     updateMusic(dt);
     updateHUD();
     updateReticle();

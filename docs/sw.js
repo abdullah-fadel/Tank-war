@@ -1,13 +1,14 @@
-const CACHE_NAME = 'tank-assault-v10';
+const CACHE_NAME = 'tank-assault-v12';
 const APP_SHELL = [
   './',
   './index.html',
   './manifest.json',
   './models/t90a.glb',
-  './models/t34.glb',
+  './models/fictional_cold_war_tank.glb',
   './models/apache.glb',
   './models/canyon.glb',
   './models/special_shell.glb',
+  './models/9k31_strela1_sam.glb',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './sfx/shell_explosion.mp3',
