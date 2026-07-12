@@ -1193,8 +1193,9 @@ loadEnemyTankModel();
 // وتطلق عليه صواريخ موجَّهة (Homing) دون أي تدخل من اللاعب. النموذج مُصدَّر بمقياس واقعي ومحوره
 // الأمامي -Z، فنرويده ليتوافق مع محور +X ونصغّره لحجم مقارب لبقية مركبات اللعبة.
 var SAM_MODEL_URL = 'models/9k31_strela1_sam.glb';
-var SAM_MODEL_SCALE = 0.45;
+var SAM_MODEL_SCALE = 0.25; // كانت 0.45 تجعلها أكبر بكثير من بقية المركبات مقارنةً بدبابة اللاعب
 var SAM_FOLLOW_OFFSET_X = -9;   // تتموضع خلف اللاعب قليلاً بدل الانضمام لصفه مباشرة
+var SAM_FOLLOW_SPEED = 24;      // أسرع من سرعة اللاعب القصوى كي لا تتخلّف عنه أبداً أثناء التقدّم
 var SAM_DETECT_RANGE = 42;      // مدى رصد طيران العدو
 var SAM_FIRE_COOLDOWN = 3.2;
 var SAM_MISSILE_SPEED = 30;
@@ -1204,7 +1205,7 @@ var samMissiles = [];    // {mesh, target, vel, life}
 
 function wrapLoadedSamModel(model){
   var launchPoint = new THREE.Object3D();
-  launchPoint.position.set(0.1, 4.65, -1.72);
+  launchPoint.position.set(0.06, 2.58, -0.96);
   var root = new THREE.Group();
   root.add(model);
   root.add(launchPoint);
@@ -1218,6 +1219,10 @@ function loadSamVehicleModel(){
     var model = gltf.scene;
     model.rotation.y = -Math.PI / 2;
     model.scale.setScalar(SAM_MODEL_SCALE);
+    // صاروخ احتياطي منفصل جغرافياً في النموذج الأصلي (كان يظهر طايفاً بجانب العجلة) — يُحذف لأن
+    // الصواريخ الفعلية تُبنى وتُطلَق إجرائياً بدل الاعتماد عليه
+    var strayMissile = model.getObjectByName('9M37_L04003_23');
+    if(strayMissile) strayMissile.parent.remove(strayMissile);
     model.traverse(function(o){ if(o.isMesh){ o.castShadow = true; o.receiveShadow = true; } });
     var tank = wrapLoadedSamModel(model);
     tank.position.set(player.x + SAM_FOLLOW_OFFSET_X, groundHeightAt(player.x + SAM_FOLLOW_OFFSET_X), 0);
@@ -1245,11 +1250,14 @@ function buildSamMissileMesh(){
   return samMissileTemplate.clone(true);
 }
 
-// تتبع موقع اللاعب بلطف (Lerp) بدل الالتصاق الفوري، وترصد أقرب طائرة عدو ضمن مداها لإطلاق صاروخ عليها
+// تتبع موقع اللاعب بخطوة محدودة السرعة (بدل Lerp أُسّي كان يجعلها تتخلّف بعيداً خلف اللاعب أثناء تقدّمه)،
+// وترصد أقرب طائرة عدو ضمن مداها لإطلاق صاروخ عليها
 function updateSamVehicle(dt){
   if(!samVehicle) return;
   var desiredX = player.x + SAM_FOLLOW_OFFSET_X;
-  samVehicle.x += (desiredX - samVehicle.x) * Math.min(1, dt*1.2);
+  var diff = desiredX - samVehicle.x;
+  var maxStep = SAM_FOLLOW_SPEED * dt;
+  samVehicle.x += Math.max(-maxStep, Math.min(maxStep, diff));
   samVehicle.tank.position.set(samVehicle.x, groundHeightAt(samVehicle.x), 0);
   samVehicle.tank.rotation.y = 0; // يواجه دوماً يمين الشاشة (نفس اتجاه مواجهة اللاعب الافتراضي)
 
