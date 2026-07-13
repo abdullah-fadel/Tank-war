@@ -1053,6 +1053,33 @@ function loadSpecialShellModel(){
 }
 loadSpecialShellModel();
 
+// نموذج القذيفة العادية الحقيقي (Military Tank Shell) — يستبدل الكرة الإجرائية البسيطة لكل قذائف
+// المدافع العادية (اللاعب والعدو معاً). النموذج مُصدَّر برأسه المدبب متجهاً +Y وبحجم أكبر بكثير من
+// وحدات اللعبة، لذا نلفّه بمجموعة (Group) نعيد توجيه الابن داخلها (-90° حول Z يحاذي الرأس مع +X،
+// اتجاه المواجهة الافتراضي لأي قذيفة في fireProjectile) ونصغّره لحجم مقارب للقذيفة الخاصة القائمة أصلاً.
+var SHELL_MODEL_URL = 'models/tank_shell.glb';
+var SHELL_MODEL_SCALE = 0.14;
+var shellTemplate = null;
+function loadShellModel(){
+  if(typeof THREE.GLTFLoader === 'undefined') return;
+  var loader = new THREE.GLTFLoader();
+  loader.load(SHELL_MODEL_URL, function(gltf){
+    var model = gltf.scene;
+    model.rotation.z = -Math.PI/2;
+    model.scale.setScalar(SHELL_MODEL_SCALE);
+    model.traverse(function(o){ if(o.isMesh){ o.castShadow = true; } });
+    var wrapper = new THREE.Group();
+    wrapper.add(model);
+    shellTemplate = wrapper;
+  }, undefined, function(err){
+    console.warn('[TankAssault] تعذّر تحميل نموذج القذيفة العادية، سيُستخدم النموذج الإجرائي البديل.', err);
+  });
+}
+loadShellModel();
+function buildShellMesh(){
+  return shellTemplate ? shellTemplate.clone(true) : null;
+}
+
 // شريط صحة ثلاثي الأبعاد يطفو فوق الوحدة
 function makeHealthBar(){
   var g = new THREE.Group();
@@ -1197,13 +1224,20 @@ loadEnemyTankModel();
 // محور +X (اتجاه المواجهة الافتراضي نفسه المستخدم لبقية المركبات عند rotation.y = 0).
 var SAM_MODEL_URL = 'models/9k31_strela1_sam.glb';
 var SAM_MODEL_SCALE = 0.25; // كانت 0.45 تجعلها أكبر بكثير من بقية المركبات مقارنةً بدبابة اللاعب
-var SAM_FOLLOW_OFFSET_X = -9;   // تتموضع خلف اللاعب قليلاً بدل الانضمام لصفه مباشرة
-var SAM_FOLLOW_SPEED = 24;      // أسرع من سرعة اللاعب القصوى كي لا تتخلّف عنه أبداً أثناء التقدّم
+var SAM_FOLLOW_OFFSET_X = -9;   // موضع البداية الافتراضي (خلف اللاعب قليلاً) قبل أن يبدأ التجوال الحر
+var SAM_FOLLOW_SPEED = 24;      // سرعة اللحاق العاجل عند تجاوز الحد الأقصى للمسافة عن اللاعب
+var SAM_WANDER_SPEED = 10;      // سرعة التجوال الحر البطيئة (حركة عرضية طبيعية وليست لحاقاً طارئاً)
+var SAM_WANDER_MIN = 4, SAM_WANDER_MAX = 11;      // نطاق إزاحة وجهات التجوال العشوائية عن موقع اللاعب
+var SAM_WANDER_CHANGE_MIN = 2.5, SAM_WANDER_CHANGE_MAX = 5.5; // كل كم ثانية تختار وجهة تجوال جديدة
+var SAM_MAX_LEASH = 14;         // أقصى مسافة تُسمح بها العجلة عن اللاعب — تبقى قريبة منه دوماً
 var SAM_DETECT_RANGE = 42;      // مدى رصد طيران العدو
 var SAM_FIRE_COOLDOWN = 3.2;
 var SAM_MISSILE_SPEED = 30;
 var SAM_MISSILE_TURN_RATE = 2.6; // معدّل توجيه الصاروخ نحو الهدف (كلما زاد، انعطف أسرع خلف طائرة مناورة)
-var samVehicle = null;   // {tank, x, fireCd}
+var SAM_MISSILE_DAMAGE_FRACTION = 0.45; // الإصابة المباشرة تُلحق 45% من صحة الطائرة القصوى فقط، وليست قتلاً فورياً
+var SAM_MAX_HP = 70; // عجلة الدفاع الجوي عرضة لنيران العدو الآن تماماً كاللاعب، فهي تحتاج صحة خاصة بها
+var samVehicle = null;         // {tank, x, fireCd, hp, maxHp, hpBar, wanderOffset, wanderTimer}
+var samVehicleTemplate = null; // النموذج المُعالَج (تدوير/تحجيم/حذف الصاروخ الطائف) يُخزَّن مرة واحدة فقط
 var samMissiles = [];    // {mesh, target, vel, life}
 
 function wrapLoadedSamModel(model){
@@ -1214,6 +1248,20 @@ function wrapLoadedSamModel(model){
   root.add(launchPoint);
   root.userData = { launchPoint: launchPoint };
   return root;
+}
+// تُستنسخ العجلة من القالب المُحمَّل مسبقاً بدل إعادة التحميل من الشبكة في كل مرة (كبقية مركبات
+// اللعبة: enemyTankTemplate/heliTemplate) — يُستخدم هذا عند أول ظهور وأيضاً عند إعادة الظهور بعد التدمير
+function spawnSamVehicle(){
+  if(!samVehicleTemplate) return;
+  var tank = wrapLoadedSamModel(samVehicleTemplate.clone(true));
+  tank.position.set(player.x + SAM_FOLLOW_OFFSET_X, groundHeightAt(player.x + SAM_FOLLOW_OFFSET_X), 0);
+  scene.add(tank);
+  var hpBar = makeHealthBar(); scene.add(hpBar);
+  samVehicle = {
+    tank: tank, x: tank.position.x, fireCd: 1.5,
+    hp: SAM_MAX_HP, maxHp: SAM_MAX_HP, hpBar: hpBar,
+    wanderOffset: SAM_FOLLOW_OFFSET_X, wanderTimer: 2
+  };
 }
 function loadSamVehicleModel(){
   if(typeof THREE.GLTFLoader === 'undefined') return;
@@ -1227,10 +1275,8 @@ function loadSamVehicleModel(){
     var strayMissile = model.getObjectByName('9M37_L04003_23');
     if(strayMissile) strayMissile.parent.remove(strayMissile);
     model.traverse(function(o){ if(o.isMesh){ o.castShadow = false; o.receiveShadow = true; } }); // إلقاء الظل معطّل: نماذج حقيقية عالية التفاصيل، وتفعيله لكل مركبة يضاعف حمل التظليل على المعالج الرسومي
-    var tank = wrapLoadedSamModel(model);
-    tank.position.set(player.x + SAM_FOLLOW_OFFSET_X, groundHeightAt(player.x + SAM_FOLLOW_OFFSET_X), 0);
-    scene.add(tank);
-    samVehicle = { tank: tank, x: tank.position.x, fireCd: 1.5 };
+    samVehicleTemplate = model;
+    spawnSamVehicle();
   }, undefined, function(err){
     console.warn('[TankAssault] تعذّر تحميل نموذج عجلة الدفاع الجوي (Strela-1)، ستُستبعد وحدة الدعم من هذه الجلسة.', err);
   });
@@ -1253,16 +1299,47 @@ function buildSamMissileMesh(){
   return samMissileTemplate.clone(true);
 }
 
-// تتبع موقع اللاعب بخطوة محدودة السرعة (بدل Lerp أُسّي كان يجعلها تتخلّف بعيداً خلف اللاعب أثناء تقدّمه)،
+function updateSamHealthBar(){
+  if(!samVehicle || !samVehicle.hpBar) return;
+  var pos = samVehicle.tank.position;
+  samVehicle.hpBar.position.set(samVehicle.x, pos.y + 3.2, pos.z||0);
+  samVehicle.hpBar.userData.fg.scale.x = Math.max(0.001, samVehicle.hp/samVehicle.maxHp);
+  samVehicle.hpBar.userData.fg.position.x = -(1 - samVehicle.hp/samVehicle.maxHp)*1.5;
+}
+// تُدمَّر العجلة فعلياً عند نفاد صحتها (تماماً كاللاعب): انفجار حقيقي وإزالة من المشهد،
+// وتُستعاد مع بداية المرحلة التالية عبر startStage()
+function destroySamVehicle(){
+  if(!samVehicle) return;
+  var p = samVehicle.tank.position;
+  explosion(p.x, p.y+1.5, p.z||0, true);
+  playSound('explosion', worldPan(p.x), true);
+  camShake = Math.max(camShake, 0.8);
+  scene.remove(samVehicle.tank); scene.remove(samVehicle.hpBar);
+  samVehicle = null;
+}
+
+// تتحرك بحرية ضمن مسافة محدودة عن اللاعب (تجوال عشوائي بطيء) بدل التقيّد بإزاحة ثابتة صارمة، لكنها
+// تُجبَر على اللحاق سريعاً إن تجاوزت الحد الأقصى المسموح للمسافة كي تبقى قريبة من اللاعب دوماً،
 // وترصد أقرب طائرة عدو ضمن مداها لإطلاق صاروخ عليها
 function updateSamVehicle(dt){
   if(!samVehicle) return;
-  var desiredX = player.x + SAM_FOLLOW_OFFSET_X;
+  if(samVehicle.hp <= 0){ destroySamVehicle(); return; }
+
+  samVehicle.wanderTimer -= dt;
+  if(samVehicle.wanderTimer <= 0){
+    samVehicle.wanderTimer = SAM_WANDER_CHANGE_MIN + Math.random()*(SAM_WANDER_CHANGE_MAX-SAM_WANDER_CHANGE_MIN);
+    var side = Math.random()<0.5 ? -1 : 1;
+    samVehicle.wanderOffset = side * (SAM_WANDER_MIN + Math.random()*(SAM_WANDER_MAX-SAM_WANDER_MIN));
+  }
+  var desiredX = Math.max(player.x - SAM_MAX_LEASH, Math.min(player.x + SAM_MAX_LEASH, player.x + samVehicle.wanderOffset));
   var diff = desiredX - samVehicle.x;
-  var maxStep = SAM_FOLLOW_SPEED * dt;
+  var distFromPlayer = Math.abs(samVehicle.x - player.x);
+  var speed = distFromPlayer > SAM_MAX_LEASH*0.7 ? SAM_FOLLOW_SPEED : SAM_WANDER_SPEED;
+  var maxStep = speed * dt;
   samVehicle.x += Math.max(-maxStep, Math.min(maxStep, diff));
   samVehicle.tank.position.set(samVehicle.x, groundHeightAt(samVehicle.x), 0);
   samVehicle.tank.rotation.y = player.dir >= 0 ? 0 : Math.PI; // تدور لتواجه نفس جهة اللاعب دوماً بدل التجمّد باتجاه واحد
+  updateSamHealthBar();
 
   samVehicle.fireCd -= dt;
   if(samVehicle.fireCd > 0) return;
@@ -1304,8 +1381,11 @@ function updateSamMissiles(dt){
       var toTarget = targetPos.clone().sub(m.mesh.position);
       var dist = toTarget.length();
       if(dist < 1.6){
-        m.target.hp = 0; // إصابة مباشرة مؤكّدة — يتكفّل updateEnemies() بالانفجار والمكافأة وإزالة الهدف
+        // إصابة مباشرة لكنها ليست قاتلة فورية: الصاروخ يُلحق 45% فقط من صحة الطائرة القصوى، لا 100%
+        var samDmg = m.target.maxHp * SAM_MISSILE_DAMAGE_FRACTION;
+        m.target.hp -= samDmg;
         hit = true;
+        spawnDamageText(m.target.x, m.target.tank.position.y + 3.6*m.target.scale + 0.7, m.target.tank.position.z||0, '-'+Math.round(samDmg), '#8fd0ff');
       } else {
         toTarget.normalize().multiplyScalar(SAM_MISSILE_SPEED);
         m.vel.lerp(toTarget, Math.min(1, dt*SAM_MISSILE_TURN_RATE));
@@ -1384,6 +1464,17 @@ function explosion(x,y,z, big){
   spawnFlashLight(x, y+1.5, z, big?11:4, big?9:5);
   spawnScorch(x, gy+0.03, z, big?4.5:2.6);
   camFovPunch = Math.max(camFovPunch, big?5:2.5);
+}
+// انفجار "حقيقي" عند اصطدام قذيفة فعلياً بهيكل دبابة (لاعب أو عدو) — أعنف وأكبر من ارتطام أرضي عادي:
+// كرة نار كبيرة + شظايا معدنية متطايرة، لمحاكاة انفجار ذخيرة داخل مركبة مدرّعة
+function tankHitExplosion(x,y,z){
+  explosion(x,y,z, true);
+  for(var i=0;i<9;i++){
+    var a=Math.random()*Math.PI*2, sp=7*(0.5+Math.random());
+    spawnParticle(x,y,z, i%2?0x9a9a9a:0x4a4a4a, 0.22+Math.random()*0.15, 0.55+Math.random()*0.4,
+      Math.cos(a)*sp, 3+Math.random()*4.5, (Math.random()-0.5)*sp, false);
+  }
+  camShake = Math.max(camShake, 0.7);
 }
 function muzzleFlash(pos, dir){
   spawnParticle(pos.x, pos.y, pos.z, 0xffe08a, 2.2, 0.12, dir.x*4, dir.y*4, 0, true);
@@ -1906,6 +1997,14 @@ function startStage(){
   enemies = [];
   projectiles.forEach(function(p){ scene.remove(p.mesh); }); projectiles = [];
   samMissiles.forEach(function(m){ scene.remove(m.mesh); }); samMissiles = [];
+  // عجلة الدفاع الجوي تُشفى مع بداية كل مرحلة كاللاعب تماماً، أو تُستعاد إن كانت قد دُمّرت في المرحلة السابقة،
+  // وتُعاد لموضع قريب من نقطة انطلاق اللاعب الجديدة (x=0 أدناه) بدل تركها بعيدة في موضع المرحلة السابقة
+  if(samVehicle){
+    samVehicle.hp = samVehicle.maxHp;
+    samVehicle.wanderOffset = SAM_FOLLOW_OFFSET_X; samVehicle.wanderTimer = 2;
+    samVehicle.x = SAM_FOLLOW_OFFSET_X;
+    samVehicle.tank.position.set(samVehicle.x, groundHeightAt(samVehicle.x), 0);
+  } else spawnSamVehicle();
   bossSpawned = false; stageClearing = false;
   // المرحلة الأولى سهلة عمداً (عددان فقط قبل الزعيم) للتعرّف على أسلوب اللعب، ثم تصاعد تدريجي أهدأ من السابق —
   // التحدي الإضافي بالمراحل المتقدمة يأتي أساساً من صحة الأعداء ووتيرة ظهورهم والعوائق/الطقس، لا من الكثرة العددية وحدها
@@ -2232,7 +2331,7 @@ function updatePlayer(dt){
     player.fireCd = 0.5;
     player.ammo--;
     var dir = new THREE.Vector3(Math.cos(player.aim) * facingSign, Math.sin(player.aim), 0);
-    fireProjectile(player.tank.userData.muzzle, dir, true, player.dmg, 3, player.tank);
+    fireProjectile(player.tank.userData.muzzle, dir, true, player.dmg, 3, player.tank, buildShellMesh());
     if(player.ammo<=0){ player.reloading=true; player.reloadTimer=player.reloadTime; playSound('reloadStart'); }
   }
 }
@@ -2298,7 +2397,7 @@ function updateGroundEnemy(e, dt){
       e.fireCd = (e.isBoss?1.1:(2.0+Math.random()*1.8)) * e.fireCdMultiplier;
       var curAng = bp.rotation.z;
       var dir = new THREE.Vector3(Math.cos(curAng) * e.facingDir, Math.sin(curAng), 0);
-      fireProjectile(e.tank.userData.muzzle, dir, false, e.dmg, 0, e.tank);
+      fireProjectile(e.tank.userData.muzzle, dir, false, e.dmg, 0, e.tank, buildShellMesh());
     }
   }
 }
@@ -2422,11 +2521,16 @@ function updateProjectiles(dt){
         camShake = Math.max(camShake, 0.5); camFovPunch = Math.max(camFovPunch, 3); flashDamage();
         if(player.hp<=0){ player.hp=0; offerContinue(); }
         updateHUD();
+      } else if(samVehicle && samVehicle.hp>0 && Math.abs(p.mesh.position.x - samVehicle.x) < 2.4 && Math.abs(p.mesh.position.y - samVehicle.tank.position.y - 1) < 2.4){
+        // عجلة الدفاع الجوي عرضة لنيران العدو تماماً كاللاعب — لم تعد محصّنة
+        samVehicle.hp -= p.dmg; hit=true; playSound('hit', worldPan(samVehicle.x));
+        spawnDamageText(samVehicle.x, samVehicle.tank.position.y + 3.2, samVehicle.tank.position.z||0, '-'+Math.round(p.dmg), '#8fd0ff');
       }
     }
 
     if(p.mesh.position.y <= gy || hit || p.life<=0){
-      explosion(p.mesh.position.x, Math.max(gy, p.mesh.position.y), p.mesh.position.z||0, !!p.isSpecial);
+      if(hit) tankHitExplosion(p.mesh.position.x, Math.max(gy, p.mesh.position.y), p.mesh.position.z||0);
+      else explosion(p.mesh.position.x, Math.max(gy, p.mesh.position.y), p.mesh.position.z||0, !!p.isSpecial);
       if(!hit) playSound('explosion', worldPan(p.mesh.position.x));
       scene.remove(p.mesh); projectiles.splice(i,1);
     }
