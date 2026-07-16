@@ -206,6 +206,10 @@ namespace TankAssault.EditorTools
             var hullMat = CreateColorMaterial("Mat_PlayerHull", new Color(0.2f, 0.45f, 0.25f));
             var turretMat = CreateColorMaterial("Mat_PlayerTurret", new Color(0.15f, 0.35f, 0.2f));
             var wheelMat = CreateColorMaterial("Mat_Wheel", new Color(0.1f, 0.1f, 0.1f));
+            var poleMat = CreateColorMaterial("Mat_FlagPole", new Color(0.3f, 0.3f, 0.3f));
+            var flagRedMat = CreateColorMaterial("Mat_FlagRed", new Color(0.8f, 0.1f, 0.1f));
+            var flagWhiteMat = CreateColorMaterial("Mat_FlagWhite", new Color(0.95f, 0.95f, 0.95f));
+            var flagBlackMat = CreateColorMaterial("Mat_FlagBlack", new Color(0.05f, 0.05f, 0.05f));
 
             var root = new GameObject("PlayerTank");
             root.tag = "Player";
@@ -215,6 +219,13 @@ namespace TankAssault.EditorTools
             root.AddComponent<BoxCollider>().size = new Vector3(2.2f, 0.8f, 1.4f);
 
             var hull = CreateChildPrimitive(root.transform, PrimitiveType.Cube, "Hull", new Vector3(0, 0.5f, 0), new Vector3(2.2f, 0.6f, 1.3f), hullMat);
+
+            // Iraqi flag (red/white/black stripes) mounted on a pole at the rear of the hull.
+            // The Takbir script on the real flag isn't reproducible with flat-color primitives.
+            CreateChildPrimitive(root.transform, PrimitiveType.Cylinder, "FlagPole", new Vector3(-0.9f, 1.15f, 0.5f), new Vector3(0.025f, 0.35f, 0.025f), poleMat);
+            CreateChildPrimitive(root.transform, PrimitiveType.Cube, "FlagStripe_Red", new Vector3(-1.15f, 1.425f, 0.5f), new Vector3(0.5f, 0.15f, 0.02f), flagRedMat);
+            CreateChildPrimitive(root.transform, PrimitiveType.Cube, "FlagStripe_White", new Vector3(-1.15f, 1.275f, 0.5f), new Vector3(0.5f, 0.15f, 0.02f), flagWhiteMat);
+            CreateChildPrimitive(root.transform, PrimitiveType.Cube, "FlagStripe_Black", new Vector3(-1.15f, 1.125f, 0.5f), new Vector3(0.5f, 0.15f, 0.02f), flagBlackMat);
 
             var turretPivot = CreateEmpty(root.transform, "TurretPivot", new Vector3(0, 0.9f, 0));
             CreateChildPrimitive(turretPivot, PrimitiveType.Cylinder, "TurretBody", Vector3.zero, new Vector3(0.7f, 0.25f, 0.7f), turretMat);
