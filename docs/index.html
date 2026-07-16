@@ -1110,9 +1110,27 @@ function updateTankRecoil(tank, dt){
 // ثابتاً بصرياً وننشئ عقد تحكّم غير مرئية (barrelPivot/muzzle) في مكان الماسورة الحقيقي
 // تحافظ على نفس تعاقد userData الذي يعتمد عليه بقية الكود (التصويب، الارتداد، الإطلاق).
 var PLAYER_MODEL_URL = 'models/t90a.glb';
+// ماسورة بصرية إجرائية تُضاف فوق ماسورة النموذج المدمجة الثابتة: تدور فعلياً مع barrelPivot عند
+// التصويب (بخلاف ماسورة النموذج نفسها التي لا يمكن تحريكها). تبدأ من نفس نقطة انطلاق الماسورة الحقيقية
+// تقريباً (لا من محور الارتكاز) كي تتطابق بصرياً معها عند زوايا التصويب المعتادة القريبة من الافتراضية،
+// بدل الظهور كماسورتين متقاطعتين بوضوح.
+function makeOverlayBarrel(startOffset, endOffset, radiusTip, radiusBase){
+  var length = endOffset - startOffset;
+  var barrel = new THREE.Mesh(
+    new THREE.CylinderGeometry(radiusTip, radiusBase, length, 12),
+    new THREE.MeshStandardMaterial({ color:0x33352c, roughness:0.55, metalness:0.7 })
+  );
+  barrel.rotation.z = Math.PI/2; // من محور الأسطوانة الافتراضي (Y) إلى محور الإطلاق (X)
+  barrel.position.x = startOffset + length/2;
+  barrel.castShadow = false;
+  return barrel;
+}
 function wrapLoadedTankModel(model){
   var barrelPivot = new THREE.Group();
   barrelPivot.position.set(0.17, 0.91, 0);
+  // تمتد من نقطة الارتكاز نفسها حتى الفوهة كي تبقى متصلة بصرياً بجسم البرج عند كل زوايا التصويب
+  // (تجربة بدء الماسورة من نقطة أبعد عن الارتكاز تركتها منفصلة كقطعة عائمة عند الدوران بعيداً عن الافتراضي)
+  barrelPivot.add(makeOverlayBarrel(0, 2.53, 0.115, 0.145));
   var muzzle = new THREE.Object3D();
   muzzle.position.set(2.53, 0, 0);
   barrelPivot.add(muzzle);
@@ -1164,6 +1182,11 @@ function wrapLoadedEnemyModel(model){
   muzzle.position.set(3.4, 0, 0);
   barrelPivot.add(muzzle);
 
+  // بخلاف نموذج اللاعب (شبكة واحدة مدمجة)، مدفع دبابة العدو منفصل فعلياً في النموذج (عقدة Mantle_27
+  // تحمل عقدة الماسورة Cannon_low_26) — نديره مباشرة لرفع/خفض الماسورة بصرياً حقاً بدل عقدة منطقية
+  // غير مرئية فقط. محور X المحلي لهذه العقدة (بعد دوران المشهد +90° حول Y أعلاه) يقابل محور الارتفاع.
+  var cannonPivot = model.getObjectByName('Mantle_27');
+
   var turretRef = new THREE.Object3D();
   turretRef.position.set(-0.32, 1.47, 0);
 
@@ -1179,7 +1202,7 @@ function wrapLoadedEnemyModel(model){
   root.userData = {
     turret: turretRef, barrelPivot: barrelPivot, muzzle: muzzle, wheels: [], scale: 1,
     hull: model, hullOrigY: 0, barrel: null, barrelOrigX: 0,
-    turretMesh: null, exhaustTip: exhaustTip, recoilTimer: 0
+    turretMesh: null, exhaustTip: exhaustTip, recoilTimer: 0, cannonPivot: cannonPivot
   };
   return root;
 }
@@ -2386,6 +2409,8 @@ function updateGroundEnemy(e, dt){
   var shooterY = e.tank.position.y + 1.12, targetY = player.tank.position.y + 0.9;
   var aimAng = computeBallisticAngle(absD, targetY - shooterY, 34, 26);
   bp.rotation.z += (aimAng - bp.rotation.z) * Math.min(1, dt*4.5);
+  // ترفع/تخفض الماسورة الحقيقية بصرياً بنفس الزاوية (عقدة منفصلة فعلياً في هذا النموذج تحديداً)
+  if(e.tank.userData.cannonPivot) e.tank.userData.cannonPivot.rotation.x = -bp.rotation.z;
 
   // الإطلاق على اللاعب — الاتجاه الأفقي يتبع جهة المواجهة الفعلية فيصيب اللاعب سواء كان يميناً أو يساراً.
   // حدّ زمني عام مشترك بين كل دبابات العدو (ENEMY_FIRE_GAP_MS) يمنع تراكب طلقات عدة دبابات بنفس اللحظة تقريباً
@@ -2482,7 +2507,9 @@ function updateProjectiles(dt){
     var p = projectiles[i];
     p.vel.y += GRAVITY*dt;
     p.mesh.position.addScaledVector(p.vel, dt);
-    if(p.isSpecial) p.mesh.rotation.z = Math.atan2(p.vel.y, p.vel.x); // طرف القذيفة يتبع مسارها المقوّس بالجاذبية
+    // طرف القذيفة يتبع مسارها المقوّس بالجاذبية باستمرار كل إطار (لا مرة واحدة عند الإطلاق فقط)، وإلا
+    // بدت مائلة بزاوية إطلاقها الأولى الثابتة كلما انحنى مسارها الفعلي عنها لاحقاً بفعل الجاذبية
+    p.mesh.rotation.z = Math.atan2(p.vel.y, p.vel.x);
     p.life -= dt;
     // أثر القذيفة
     if(Math.random()<0.6) spawnParticle(p.mesh.position.x, p.mesh.position.y, p.mesh.position.z,
