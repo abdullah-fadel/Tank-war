@@ -21,7 +21,6 @@ namespace TankAssault.EditorTools
         private const string WeaponPrefabFolder = "Assets/_Project/Prefabs/Weapons";
         private const string VfxPrefabFolder = "Assets/_Project/Prefabs/VFX";
         private const string MaterialFolder = "Assets/_Project/Materials/Placeholder";
-        private const string IraqFlagTexturePath = "Assets/_Project/Textures/Flags/IraqFlag_Diffuse.png";
 
         public const string StandardProjectilePath = WeaponPrefabFolder + "/Projectile_Standard.prefab";
         public const string HomingProjectilePath = WeaponPrefabFolder + "/Projectile_Homing.prefab";
@@ -84,36 +83,6 @@ namespace TankAssault.EditorTools
 
             Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
             var mat = new Material(shader) { color = color };
-            AssetDatabase.CreateAsset(mat, path);
-            return mat;
-        }
-
-        private static Material CreateFlagMaterial(string name, string texturePath)
-        {
-            string path = $"{MaterialFolder}/{name}.mat";
-            var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
-            if (existing != null) return existing;
-
-            var importer = AssetImporter.GetAtPath(texturePath) as TextureImporter;
-            if (importer != null && !importer.alphaIsTransparency)
-            {
-                importer.alphaIsTransparency = true;
-                importer.mipmapEnabled = false;
-                importer.wrapMode = TextureWrapMode.Clamp;
-                importer.SaveAndReimport();
-            }
-            var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath);
-
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
-            var mat = new Material(shader);
-            if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", texture);
-            if (mat.HasProperty("_MainTex")) mat.SetTexture("_MainTex", texture);
-            if (mat.HasProperty("_Cutoff")) mat.SetFloat("_Cutoff", 0.5f);
-            if (mat.HasProperty("_AlphaClip")) mat.SetFloat("_AlphaClip", 1f);
-            mat.EnableKeyword("_ALPHATEST_ON");
-            mat.SetOverrideTag("RenderType", "TransparentCutout");
-            mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.AlphaTest;
-
             AssetDatabase.CreateAsset(mat, path);
             return mat;
         }
@@ -237,8 +206,6 @@ namespace TankAssault.EditorTools
             var hullMat = CreateColorMaterial("Mat_PlayerHull", new Color(0.2f, 0.45f, 0.25f));
             var turretMat = CreateColorMaterial("Mat_PlayerTurret", new Color(0.15f, 0.35f, 0.2f));
             var wheelMat = CreateColorMaterial("Mat_Wheel", new Color(0.1f, 0.1f, 0.1f));
-            var poleMat = CreateColorMaterial("Mat_FlagPole", new Color(0.3f, 0.3f, 0.3f));
-            var flagMat = CreateFlagMaterial("Mat_IraqFlag", IraqFlagTexturePath);
 
             var root = new GameObject("PlayerTank");
             root.tag = "Player";
@@ -248,16 +215,6 @@ namespace TankAssault.EditorTools
             root.AddComponent<BoxCollider>().size = new Vector3(2.2f, 0.8f, 1.4f);
 
             var hull = CreateChildPrimitive(root.transform, PrimitiveType.Cube, "Hull", new Vector3(0, 0.5f, 0), new Vector3(2.2f, 0.6f, 1.3f), hullMat);
-
-            // Iraqi flag decal (cropped from the supplied 3D map/flags reference asset) on a pole
-            // at the rear of the hull. A cutout-textured quad reads better at this scale than
-            // trying to reproduce the flag's script and emblem out of flat-color primitives.
-            const float flagWidth = 0.55f;
-            const float flagAspect = 153f / 246f;
-            const float flagHeight = flagWidth * flagAspect;
-
-            CreateChildPrimitive(root.transform, PrimitiveType.Cylinder, "FlagPole", new Vector3(-0.9f, 1.15f, 0.5f), new Vector3(0.025f, 0.35f, 0.025f), poleMat);
-            CreateChildPrimitive(root.transform, PrimitiveType.Quad, "IraqFlag", new Vector3(-0.9f - flagWidth * 0.5f, 1.35f, 0.5f), new Vector3(flagWidth, flagHeight, 1f), flagMat);
 
             var turretPivot = CreateEmpty(root.transform, "TurretPivot", new Vector3(0, 0.9f, 0));
             CreateChildPrimitive(turretPivot, PrimitiveType.Cylinder, "TurretBody", Vector3.zero, new Vector3(0.7f, 0.25f, 0.7f), turretMat);
