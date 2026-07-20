@@ -1175,6 +1175,16 @@ var ENEMY_MODEL_URL = 'models/fictional_cold_war_tank.glb';
 // نصغّره ليطابق حجم دبابات اللعبة وندويره ليتوافق مع محور +X (اتجاه الحركة/الإطلاق المعتمد في الكود)
 var ENEMY_MODEL_SCALE = 0.64;
 var enemyTankTemplate = null;
+// بوابة جهوزية النماذج الأساسية (اللاعب + دبابة العدو): زر البدء لا يظهر إلا بعد استقرار كل نموذج
+// مُسجَّل هنا (نجاحاً أو فشلاً) — يمنع بدء المعركة قبل اكتمال تحميل نموذج دبابة العدو.
+var pendingEssentialModels = 0;
+function onEssentialModelReady(){
+  pendingEssentialModels--;
+  if(pendingEssentialModels<=0){
+    document.getElementById('loadingText').style.display='none';
+    document.getElementById('startBtn').style.display='inline-block';
+  }
+}
 function wrapLoadedEnemyModel(model){
   var barrelPivot = new THREE.Group();
   barrelPivot.position.set(0.75, 1.12, 0);
@@ -1206,8 +1216,8 @@ function wrapLoadedEnemyModel(model){
   };
   return root;
 }
-function loadEnemyTankModel(){
-  if(typeof THREE.GLTFLoader === 'undefined') return;
+function loadEnemyTankModel(onDone){
+  if(typeof THREE.GLTFLoader === 'undefined'){ if(onDone) onDone(); return; }
   var loader = new THREE.GLTFLoader();
   loader.load(ENEMY_MODEL_URL, function(gltf){
     var model = gltf.scene;
@@ -1215,8 +1225,10 @@ function loadEnemyTankModel(){
     model.scale.setScalar(ENEMY_MODEL_SCALE);
     model.traverse(function(o){ if(o.isMesh){ o.castShadow = false; o.receiveShadow = true; } }); // إلقاء الظل معطّل: نماذج حقيقية عالية التفاصيل، وتفعيله لكل مركبة يضاعف حمل التظليل على المعالج الرسومي
     enemyTankTemplate = model;
+    if(onDone) onDone();
   }, undefined, function(err){
     console.warn('[TankAssault] تعذّر تحميل نموذج دبابة العدو، سيُستخدم النموذج الإجرائي البديل.', err);
+    if(onDone) onDone();
   });
 }
 // يُستنسخ كل جسم فرعي (النموذج + خرائطه) بأمان لأنه بلا عظام/حركة هيكلية، والمواد تبقى مشتركة بين النسخ لتوفير الذاكرة
@@ -1239,7 +1251,11 @@ function makeEnemyTank(opts){
   tank.userData.hullMaterials = hullMaterials;
   return tank;
 }
-loadEnemyTankModel();
+// زر البدء ينتظر جهوزية نموذج اللاعب *ونموذج دبابة العدو* معاً (انظر أسفل الملف) — إن بدأ اللاعب
+// المعركة قبل اكتمال تحميل نموذج العدو، تُنشأ أول موجة أعداء بالهيكل الإجرائي البديل بشكل دائم
+// (لا تُستبدل لاحقاً) فتظهر دبابات مختلطة الشكل بجانب بعضها.
+pendingEssentialModels++;
+loadEnemyTankModel(onEssentialModelReady);
 
 // عجلة دفاع جوي صديقة (9K31 Strela-1) — وحدة دعم ترافق اللاعب، ترصد طيران العدو (المروحيات) تلقائياً
 // وتطلق عليه صواريخ موجَّهة (Homing) دون أي تدخل من اللاعب. النموذج مُصدَّر بمقياس واقعي؛ نصغّره لحجم
@@ -2938,7 +2954,9 @@ function loop(){
 loop();
 
 // تحميل نموذج دبابة اللاعب الحقيقي (T-90A) واستبدال الهيكل الإجرائي المؤقت به عند الجهوزية،
-// ثم إظهار زر البدء — مع نموذج احتياطي إجرائي إن تعذّر تحميل الملف لأي سبب (لا تتعطّل اللعبة أبداً)
+// ثم إظهار زر البدء بعد جهوزية هذا النموذج ونموذج دبابة العدو معاً (onEssentialModelReady) —
+// مع نموذج احتياطي إجرائي إن تعذّر تحميل الملف لأي سبب (لا تتعطّل اللعبة أبداً)
+pendingEssentialModels++;
 loadPlayerTankModel(function(modelTank){
   if(modelTank){
     var pos = player.tank.position.clone();
@@ -2947,8 +2965,7 @@ loadPlayerTankModel(function(modelTank){
     player.tank.position.copy(pos);
     scene.add(player.tank);
   }
-  document.getElementById('loadingText').style.display='none';
-  document.getElementById('startBtn').style.display='inline-block';
+  onEssentialModelReady();
 });
 
 })();
