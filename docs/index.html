@@ -1109,28 +1109,13 @@ function updateTankRecoil(tank, dt){
 // الشبكة مُصدَّرة كقطعة واحدة مدمجة (لا يمكن فصل الماسورة عن البرج حركياً)، لذا نُبقي الجسم
 // ثابتاً بصرياً وننشئ عقد تحكّم غير مرئية (barrelPivot/muzzle) في مكان الماسورة الحقيقي
 // تحافظ على نفس تعاقد userData الذي يعتمد عليه بقية الكود (التصويب، الارتداد، الإطلاق).
+// (جُرِّبت ماسورة بصرية إجرائية إضافية فوق ماسورة النموذج لتتحرك مع التصويب، لكنها كانت تظهر
+// كماسورتين متقاطعتين بشكل نشاز مهما عُدِّلت نقطة انطلاقها — أُزيلت، فماسورة النموذج الثابتة
+// تبقى وحدها مرئية، والتصويب يبقى صحيحاً منطقياً عبر muzzle غير المرئية لإطلاق القذائف).
 var PLAYER_MODEL_URL = 'models/t90a.glb';
-// ماسورة بصرية إجرائية تُضاف فوق ماسورة النموذج المدمجة الثابتة: تدور فعلياً مع barrelPivot عند
-// التصويب (بخلاف ماسورة النموذج نفسها التي لا يمكن تحريكها). تبدأ من نفس نقطة انطلاق الماسورة الحقيقية
-// تقريباً (لا من محور الارتكاز) كي تتطابق بصرياً معها عند زوايا التصويب المعتادة القريبة من الافتراضية،
-// بدل الظهور كماسورتين متقاطعتين بوضوح.
-function makeOverlayBarrel(startOffset, endOffset, radiusTip, radiusBase){
-  var length = endOffset - startOffset;
-  var barrel = new THREE.Mesh(
-    new THREE.CylinderGeometry(radiusTip, radiusBase, length, 12),
-    new THREE.MeshStandardMaterial({ color:0x33352c, roughness:0.55, metalness:0.7 })
-  );
-  barrel.rotation.z = Math.PI/2; // من محور الأسطوانة الافتراضي (Y) إلى محور الإطلاق (X)
-  barrel.position.x = startOffset + length/2;
-  barrel.castShadow = false;
-  return barrel;
-}
 function wrapLoadedTankModel(model){
   var barrelPivot = new THREE.Group();
   barrelPivot.position.set(0.17, 0.91, 0);
-  // تمتد من نقطة الارتكاز نفسها حتى الفوهة كي تبقى متصلة بصرياً بجسم البرج عند كل زوايا التصويب
-  // (تجربة بدء الماسورة من نقطة أبعد عن الارتكاز تركتها منفصلة كقطعة عائمة عند الدوران بعيداً عن الافتراضي)
-  barrelPivot.add(makeOverlayBarrel(0, 2.53, 0.115, 0.145));
   var muzzle = new THREE.Object3D();
   muzzle.position.set(2.53, 0, 0);
   barrelPivot.add(muzzle);
