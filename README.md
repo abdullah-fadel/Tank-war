@@ -1,5 +1,16 @@
 # Tank Assault
 
+## Playable web version (`docs/`)
+
+A complete, standalone 3D web game (Three.js, single file, PWA, Arabic RTL) lives in
+`docs/` and is served via GitHub Pages. It is a landscape-first mobile campaign game:
+**5 themed fronts (desert sunset, storm, night ops, frozen front, volcano) × 5 missions
+each**, unlocked sequentially with a star rating per mission, persistent coins/upgrades
+(localStorage), supply-crate pickups, mission briefings, a pause menu, and fully
+customizable touch controls.
+
+## Unity project (`TankAssault/`)
+
 A 3D side-view (2.5D) mobile tank action game built in Unity (URP, portrait 9:16). This
 repository contains a complete, production-grade **codebase and content pipeline** for the
 game: clean modular C# architecture, ScriptableObject-driven game data, and Editor tooling

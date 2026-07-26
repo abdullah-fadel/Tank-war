@@ -45,7 +45,7 @@
   .status-content{ display:flex; align-items:center; gap:12px; }
   .status-strip.collapsed .status-content{ display:none; }
   .status-item{ display:flex; align-items:center; gap:5px; position:relative; }
-  .status-item.status-mute, .status-item.status-edit{ pointer-events:auto; cursor:pointer; font-size:15px; }
+  .status-item.status-mute, .status-item.status-edit, .status-item.status-pause{ pointer-events:auto; cursor:pointer; font-size:15px; }
   .status-ico{ font-size:12px; line-height:1; opacity:.85; }
   .hpbar{ width:52px; height:8px; border-radius:5px; background:rgba(0,0,0,.5); overflow:hidden; border:1px solid rgba(255,255,255,.1); }
   .hpbar > i{ display:block; height:100%; width:100%; border-radius:4px; background:linear-gradient(90deg,#4f8f26,#8ecb45); transition:width .15s ease; }
@@ -163,6 +163,11 @@
     opacity:0; transition:opacity .25s ease, transform .3s ease;
   }
   .banner.show{ opacity:1; transform:translate(-50%,-50%) scale(1); }
+  .banner .banner-sub{
+    font-size:13px; font-weight:700; letter-spacing:.02em; color:#f0eddf; margin-top:6px;
+    white-space:normal; max-width:min(86vw, 520px); line-height:1.5;
+    text-shadow:0 1px 0 #000, 0 0 14px rgba(0,0,0,.6);
+  }
 
   /* ===================== أزرار التحكم ===================== */
   .controls{ position:absolute; inset:0; z-index:11; pointer-events:none; }
@@ -257,7 +262,7 @@
   .screen.hidden{ display:none; }
 
   .screen .card{
-    max-width:360px; width:100%; max-height:100%;
+    max-width:420px; width:100%; max-height:100%;
     padding:16px 20px;
     display:flex; flex-direction:column; align-items:center; gap:8px;
   }
@@ -290,7 +295,8 @@
     pointer-events:auto; cursor:pointer; text-decoration:underline; margin-top:4px;
   }
 
-  .upgrades{ display:flex; flex-direction:column; gap:6px; width:100%; margin-top:2px; }
+  /* شبكة تطوير أفقية (عمودان) بدل قائمة عمودية طويلة — أنسب للشاشات الأفقية */
+  .upgrades{ display:grid; grid-template-columns:repeat(2, minmax(150px, 1fr)); gap:6px; width:100%; margin-top:2px; }
   .upg-row{
     display:flex; align-items:center; justify-content:space-between; gap:10px;
     padding:6px 12px; pointer-events:auto; cursor:pointer;
@@ -299,10 +305,81 @@
   .upg-row .u-lvl{ font-size:10px; color:#9aa08c; }
   .upg-row .u-cost{ font-size:12px; color:#ffb020; font-weight:800; white-space:nowrap; }
   .upg-row.disabled{ opacity:.45; }
+  @media (max-width:520px){ .upgrades{ grid-template-columns:1fr; } }
+
+  /* صف أزرار أفقي — الأزرار جنباً إلى جنب بدل تكديسها عمودياً */
+  .btn-row{ display:flex; gap:10px; width:100%; justify-content:center; flex-wrap:wrap; margin-top:4px; }
+  .btn-row .big-btn{ position:static; margin-top:0; flex:1 1 0; min-width:140px; }
+  .big-btn.secondary{
+    background:rgba(255,255,255,0.08); color:#e8e6d9;
+    border:1px solid rgba(255,255,255,0.18); box-shadow:none;
+  }
+
+  /* نجوم تقييم المرحلة */
+  .stars-line{ font-size:26px; letter-spacing:.15em; line-height:1; }
+  .stars-line .on{ color:#ffb020; text-shadow:0 0 14px rgba(255,176,32,.6); }
+  .stars-line .off{ color:rgba(255,255,255,.18); }
+
+  /* ===================== خريطة الحملة (اختيار العالم والمرحلة) ===================== */
+  .map-card{ max-width:min(94vw, 720px) !important; }
+  .world-tabs{
+    display:flex; gap:8px; width:100%; overflow-x:auto; padding:4px 2px;
+    -webkit-overflow-scrolling:touch; scrollbar-width:none;
+  }
+  .world-tabs::-webkit-scrollbar{ display:none; }
+  .world-tab{
+    flex:0 0 auto; pointer-events:auto; cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+    padding:8px 14px; border-radius:12px; min-width:86px;
+    background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.12);
+    color:#c9c6b8; font-size:11px; font-weight:700;
+    transition:border-color .15s ease, background .15s ease;
+  }
+  .world-tab .wt-icon{ font-size:20px; line-height:1; }
+  .world-tab.active{ border-color:#ffb020; background:rgba(255,176,32,.12); color:#f0eddf; }
+  .world-tab.locked{ opacity:.4; }
+  .world-tab .wt-lock{ font-size:10px; color:#9aa08c; }
+  .world-desc{ font-size:11px; color:#9aa08c; line-height:1.5; min-height:2.6em; }
+  .stage-row{ display:flex; gap:10px; justify-content:center; flex-wrap:wrap; width:100%; }
+  .stage-btn{
+    pointer-events:auto; cursor:pointer;
+    width:56px; height:56px; border-radius:14px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px;
+    background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.14);
+    color:#e8e6d9; font-size:17px; font-weight:800;
+  }
+  .stage-btn .st-stars{ font-size:9px; color:#ffb020; letter-spacing:.05em; }
+  .stage-btn .st-stars .off{ color:rgba(255,255,255,.2); }
+  .stage-btn.locked{ opacity:.35; pointer-events:none; }
+  .stage-btn.active{ border-color:#ffb020; box-shadow:0 0 0 2px rgba(255,176,32,.45); background:rgba(255,176,32,.14); }
+  .map-brief{
+    font-size:12px; color:#e8e6d9; line-height:1.6; width:100%;
+    padding:8px 12px; border-radius:10px;
+    background:rgba(255,176,32,.07); border:1px solid rgba(255,176,32,.2);
+  }
+  .map-brief b{ color:#ffb020; }
+  .map-total{ font-size:11px; color:#9aa08c; }
 
   .hint{ font-size:11px; color:#6d7460; margin-top:8px; line-height:1.7; }
 
   .loading{ color:#9aa08c; font-size:14px; }
+
+  /* ===================== تجاوب الوضع الأفقي القصير (موبايل بالعرض) ===================== */
+  /* كل الشاشات تتمدد أفقياً وتنكمش عمودياً كي لا يحتاج اللاعب للتمرير على شاشة هاتف أفقية */
+  @media (orientation:landscape) and (max-height:480px){
+    .screen{ padding:6px; }
+    .screen .card{ max-width:min(94vw, 620px); padding:10px 16px; gap:6px; }
+    .title{ font-size:21px; }
+    .subtitle{ font-size:11px; }
+    .hint{ font-size:9px; margin-top:4px; line-height:1.5; }
+    .big-btn{ padding:9px 22px; font-size:13px; }
+    .upgrades{ grid-template-columns:repeat(2, minmax(150px, 1fr)); }
+    .stars-line{ font-size:20px; }
+    .stage-btn{ width:48px; height:48px; font-size:15px; }
+    .world-tab{ padding:6px 10px; min-width:76px; }
+    .world-desc{ min-height:0; }
+    .hud-top{ padding-top:calc(env(safe-area-inset-top) + 40px); }
+  }
 </style>
 </head>
 <body>
@@ -310,7 +387,7 @@
 
 <!-- ===================== HUD ===================== -->
 <div class="hud">
-  <div class="stage-pill glass">المرحلة <b id="stageNum">1</b><span>·</span>الأعداء <b id="enemyCount">0</b></div>
+  <div class="stage-pill glass"><span id="worldPill">🏜</span>المرحلة <b id="stageNum">1</b><span>·</span>الأعداء <b id="enemyCount">0</b></div>
 
   <div class="hud-top">
     <div class="status-strip glass" id="statusStrip">
@@ -323,6 +400,7 @@
         </div>
         <div class="status-item status-mute" id="muteBtn" title="الصوت">🔊</div>
         <div class="status-item status-edit" id="editControlsBtn" title="تخصيص أزرار التحكم">⚙</div>
+        <div class="status-item status-pause" id="pauseBtn" title="إيقاف مؤقت">⏸</div>
       </div>
     </div>
     <div class="panel-right glass">
@@ -380,14 +458,41 @@
 <div class="screen" id="startScreen">
   <div class="card glass">
     <div class="title">دبابة الصحراء</div>
-    <div class="subtitle">لعبة حرب دبابات ثلاثية الأبعاد بمنظور جانبي.<br>تحرّك، صوّب المدفع، ودمّر كل الأعداء لتصل إلى الزعيم.</div>
+    <div class="subtitle">حملة حربية من <b style="color:#ffb020">5 جبهات و25 مرحلة</b> — من صحراء الغروب إلى أرض البركان.<br>تقدّم، حرّر الجبهات، طوّر دبابتك، واجمع النجوم.</div>
     <div class="loading" id="loadingText">جارٍ تحميل المحرّك ثلاثي الأبعاد…</div>
-    <button class="big-btn" id="startBtn" style="display:none">ابدأ المعركة</button>
+    <button class="big-btn" id="startBtn" style="display:none">ابدأ الحملة ▶</button>
     <div class="hint">
       لمس: عصا للحركة يمين/يسار، وعصا صغيرة لرفع/خفض المدفع، وأزرار الإطلاق/القفز/الخارقة.<br>
-      كيبورد: ← → للحركة · ↑ ↓ لزاوية المدفع · مسافة للإطلاق · S للقفز.<br>
-      اضغط ⚙ أثناء اللعب لتحريك أي زر لمكانه المفضّل لديك أو تغيير حجمه.<br>
-      انتبه لعداد الذخيرة — المدفع يحتاج إعادة تلقيم بعد كل 6 طلقات.
+      كيبورد: ← → للحركة · ↑ ↓ لزاوية المدفع · مسافة للإطلاق · S للقفز · P للإيقاف المؤقت.<br>
+      اضغط ⚙ أثناء اللعب لتحريك أي زر لمكانه المفضّل لديك، والتقط صناديق الإمداد من ساحة المعركة.
+    </div>
+  </div>
+</div>
+
+<!-- ===================== خريطة الحملة: اختيار الجبهة والمرحلة ===================== -->
+<div class="screen hidden" id="mapScreen">
+  <div class="card glass map-card">
+    <div class="title" style="font-size:20px">خريطة الحملة</div>
+    <div class="world-tabs" id="worldTabs"></div>
+    <div class="world-desc" id="worldDesc"></div>
+    <div class="stage-row" id="stageRow"></div>
+    <div class="map-brief" id="mapBrief"></div>
+    <div class="btn-row">
+      <button class="big-btn" id="playStageBtn">انطلق ▶</button>
+    </div>
+    <div class="map-total" id="mapTotals"></div>
+  </div>
+</div>
+
+<!-- ===================== شاشة الإيقاف المؤقت ===================== -->
+<div class="screen hidden" id="pauseScreen">
+  <div class="card glass">
+    <div class="title">إيقاف مؤقت</div>
+    <div class="stats-line" id="pauseInfo"></div>
+    <div class="btn-row">
+      <button class="big-btn" id="resumeBtn">استئناف ▶</button>
+      <button class="big-btn secondary" id="pauseRestartBtn">إعادة المرحلة</button>
+      <button class="big-btn secondary" id="pauseMapBtn">🗺 الخريطة</button>
     </div>
   </div>
 </div>
@@ -416,19 +521,27 @@
 <div class="screen hidden" id="gameOverScreen">
   <div class="card glass">
     <div class="title lose">دُمّرت الدبابة</div>
-    <div class="stats-line">النتيجة <b id="goScore">0</b> · المرحلة <b id="goStage">1</b></div>
-    <button class="big-btn" id="retryBtn">إعادة المحاولة</button>
+    <div class="stats-line" id="goStats">النتيجة <b id="goScore">0</b> · <span id="goStage"></span></div>
+    <div class="subtitle">عملاتك وتطويراتك محفوظة — أعد المحاولة أقوى مما كنت.</div>
+    <div class="btn-row">
+      <button class="big-btn" id="retryBtn">إعادة المحاولة</button>
+      <button class="big-btn secondary" id="goMapBtn">🗺 الخريطة</button>
+    </div>
   </div>
 </div>
 
 <!-- ===================== شاشة الانتصار / التطوير ===================== -->
 <div class="screen hidden" id="victoryScreen">
   <div class="card glass">
-    <div class="title win">تمّ تطهير المرحلة</div>
+    <div class="title win" id="vicTitle">تمّ تطهير المرحلة</div>
+    <div class="stars-line" id="vicStars"></div>
     <div class="stats-line">النتيجة <b id="vicScore">0</b> · العملة ◆ <b id="vicCoins">0</b></div>
-    <div class="subtitle">طوّر دبابتك قبل المرحلة التالية:</div>
+    <div class="subtitle">طوّر دبابتك قبل المهمة التالية:</div>
     <div class="upgrades" id="upgradeList"></div>
-    <button class="big-btn" id="nextStageBtn">المرحلة التالية ▶</button>
+    <div class="btn-row">
+      <button class="big-btn" id="nextStageBtn">المهمة التالية ▶</button>
+      <button class="big-btn secondary" id="vicMapBtn">🗺 الخريطة</button>
+    </div>
   </div>
 </div>
 
@@ -468,31 +581,30 @@ var CAM_OFFSET = new THREE.Vector3(0, 7, 22); // إزاحة الكاميرا خ�
 var camShake = 0; // شدة اهتزاز الكاميرا
 var camFovPunch = 0; // نبضة زووم خفيفة عند الإطلاق/الانفجار
 
-// خلفية سماء متدرجة (غروب) عبر تكستشر مرسوم على canvas
-function makeSkyTexture(){
-  var c = document.createElement('canvas'); c.width = 16; c.height = 256;
-  var g = c.getContext('2d').createLinearGradient(0,0,0,256);
-  g.addColorStop(0.0, '#2a3d63');
-  g.addColorStop(0.45,'#7d6f84');
-  g.addColorStop(0.72,'#e08a4e');
-  g.addColorStop(1.0, '#f4c67a');
-  var ctx = c.getContext('2d'); ctx.fillStyle = g; ctx.fillRect(0,0,16,256);
+// خلفية سماء متدرجة عبر تكستشر مرسوم على canvas — مُعمَّمة لكل عوالم الحملة (غروب/عاصفة/ليل/ثلج/بركان)
+// مع نجوم اختيارية لعالم الليل
+function makeSkyGradientTexture(stops, withStars){
+  var w = withStars ? 512 : 16;
+  var c = document.createElement('canvas'); c.width = w; c.height = 256;
+  var ctx = c.getContext('2d');
+  var g = ctx.createLinearGradient(0,0,0,256);
+  stops.forEach(function(s){ g.addColorStop(s[0], s[1]); });
+  ctx.fillStyle = g; ctx.fillRect(0,0,w,256);
+  if(withStars){
+    for(var i=0;i<160;i++){
+      var sx = Math.random()*w, sy = Math.random()*150; // النجوم بالنصف العلوي فقط (قرب الأفق تخفيها الإضاءة)
+      var alpha = 0.25 + Math.random()*0.7, r = Math.random()<0.12 ? 1.6 : 0.9;
+      ctx.fillStyle = 'rgba(255,255,240,'+alpha.toFixed(2)+')';
+      ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI*2); ctx.fill();
+    }
+    // قمر متوهج
+    ctx.fillStyle = 'rgba(235,240,255,0.95)';
+    ctx.shadowColor = 'rgba(200,215,255,0.9)'; ctx.shadowBlur = 18;
+    ctx.beginPath(); ctx.arc(w*0.72, 48, 11, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+  }
   var t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t;
 }
-// خلفية سماء عاصفة ممطرة (رمادية باهتة) تُستخدم بمراحل الطقس الممطر بدل خلفية الغروب المعتادة
-function makeStormSkyTexture(){
-  var c = document.createElement('canvas'); c.width = 16; c.height = 256;
-  var g = c.getContext('2d').createLinearGradient(0,0,0,256);
-  g.addColorStop(0.0, '#1c232b');
-  g.addColorStop(0.45,'#3a4550');
-  g.addColorStop(0.75,'#57636b');
-  g.addColorStop(1.0, '#6b7680');
-  var ctx = c.getContext('2d'); ctx.fillStyle = g; ctx.fillRect(0,0,16,256);
-  var t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t;
-}
-var normalSkyTex = makeSkyTexture();
-var stormSkyTex = makeStormSkyTexture();
-scene.background = normalSkyTex;
 
 /* ------------------------------------------------------------------ *
  *  2) الإضاءة + الظلال
@@ -506,9 +618,14 @@ sun.shadow.camera.left = -60; sun.shadow.camera.right = 60;
 sun.shadow.camera.top = 60; sun.shadow.camera.bottom = -60;
 sun.shadow.bias = -0.0004;
 scene.add(sun); scene.add(sun.target);
-scene.add(new THREE.AmbientLight(0x88663f, 0.75)); // إضاءة محيطة ملوّنة
+var ambLight = new THREE.AmbientLight(0x88663f, 0.75); // إضاءة محيطة ملوّنة (تتبدّل مع عالم الحملة)
+scene.add(ambLight);
 var hemi = new THREE.HemisphereLight(0xffd9a0, 0x6b4a24, 0.5);
 scene.add(hemi);
+// كشاف أمامي للدبابة — يُضاء فقط في عالم عمليات الليل (يُنشأ مرة واحدة عند الإقلاع كي لا يفرض
+// تغيّر عدد الأضواء إعادة تجميع الشيدرز أثناء اللعب، ويُتحكَّم به عبر شدّته فقط)
+var headLight = new THREE.PointLight(0xffe0a0, 0, 22, 1.6);
+scene.add(headLight);
 
 /* ------------------------------------------------------------------ *
  *  3) الأرضية الصحراوية بتضاريس (كثبان) + نسيج رمل + خلفية طبقات
@@ -526,22 +643,24 @@ groundGeo.rotateX(-Math.PI/2);
   groundGeo.computeVertexNormals();
 })();
 
-// نسيج رملي إجرائي (حبيبات + تدرّجات لونية) بدل اللون المصمت
-function makeSandTexture(){
+// نسيج أرضي إجرائي (حبيبات + تدرّجات لونية) بدل اللون المصمت — مُعمَّم بلوحة ألوان لكل عالم
+// (رمل الصحراء، طين العاصفة، ثلج الجبهة المتجمدة، بازلت البركان…)
+function makeSandTexture(pal){
+  pal = pal || { base:'#caa76a', blotA:'rgba(150,118,70,0.18)', blotB:'rgba(230,196,140,0.18)', grainA:'rgba(90,70,40,0.10)', grainB:'rgba(255,240,210,0.10)' };
   var tex = makeCanvasTexture(256, 256, function(ctx, w, h){
-    ctx.fillStyle = '#caa76a'; ctx.fillRect(0,0,w,h);
-    // بقع لونية كبيرة (تفاوت الرمل)
+    ctx.fillStyle = pal.base; ctx.fillRect(0,0,w,h);
+    // بقع لونية كبيرة (تفاوت سطح الأرض)
     for(var i=0;i<26;i++){
       var r = 20+Math.random()*46;
       var g = ctx.createRadialGradient(Math.random()*w,Math.random()*h,0, Math.random()*w,Math.random()*h,r);
-      var tone = Math.random()<0.5 ? 'rgba(150,118,70,0.18)' : 'rgba(230,196,140,0.18)';
+      var tone = Math.random()<0.5 ? pal.blotA : pal.blotB;
       g.addColorStop(0,tone); g.addColorStop(1,'rgba(0,0,0,0)');
       ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
     }
     // حبيبات دقيقة
     for(var j=0;j<3200;j++){
       var x=Math.random()*w, y=Math.random()*h;
-      ctx.fillStyle = Math.random()<0.5 ? 'rgba(90,70,40,0.10)' : 'rgba(255,240,210,0.10)';
+      ctx.fillStyle = Math.random()<0.5 ? pal.grainA : pal.grainB;
       ctx.fillRect(x,y,1,1);
     }
   });
@@ -602,8 +721,8 @@ function addCanyonBackdrop(){
 }
 addCanyonBackdrop();
 // جدار تعبئة دافئ خلف الجبال يتفاعل مع الضباب — يمنع تسرّب لون السماء الخام عبر أي فجوة بين قاعدة تضاريس الجبال المتعرجة والأرضية المسطحة (كان يظهر كخط/"نهر" غير متناسق)
+var hazeMat = new THREE.MeshBasicMaterial({ color:0xb8935f, fog:true }); // مرجع عام: يُعاد تلوينه مع كل عالم
 (function addHorizonHaze(){
-  var hazeMat = new THREE.MeshBasicMaterial({ color:0xb8935f, fog:true });
   var hazePlane = new THREE.Mesh(new THREE.PlaneGeometry(GROUND_LEN, 110), hazeMat);
   hazePlane.position.set(0, 40, -165); // خلف الجبال تماماً كي لا يحجب واجهتها، لكن ضمن نطاق الضباب ليتماهى مع تدرّج السماء
   bgGroup.add(hazePlane);
@@ -626,8 +745,10 @@ for(var ci=0; ci<8; ci++){
   scene.add(sp); clouds.push(sp);
 }
 
-// مطر (خطوط قطرات) يظهر فقط بمراحل العواصف — يتوضّع دوماً حول اللاعب ويعاد تدوير كل قطرة تصل قرب الأرض
-var RAIN_COUNT = 260, RAIN_SPEED = 34;
+// هطول (مطر/ثلج) يظهر بعوالم محددة — يتوضّع دوماً حول اللاعب ويعاد تدوير كل قطرة تصل قرب الأرض.
+// السرعة وطول الخط واللون قابلة للتبديل: خطوط سريعة طويلة للمطر، ونقاط بطيئة قصيرة بيضاء للثلج
+var RAIN_COUNT = 260;
+var precipSpeed = 34, precipLen = 0.9;
 var rainGeo = new THREE.BufferGeometry();
 var rainPos = new Float32Array(RAIN_COUNT*2*3);
 for(var ri=0; ri<RAIN_COUNT; ri++){
@@ -648,7 +769,7 @@ function resetRainAroundPlayer(){
     var rx = player.x + (Math.random()-0.5)*90, rz=(Math.random()-0.5)*50;
     var topY = Math.random()*40;
     pos.array[t]=rx; pos.array[t+1]=topY; pos.array[t+2]=rz;
-    pos.array[t+3]=rx; pos.array[t+4]=topY-0.9; pos.array[t+5]=rz;
+    pos.array[t+3]=rx+(precipLen<0.5?0.08:0); pos.array[t+4]=topY-precipLen; pos.array[t+5]=rz;
   }
   pos.needsUpdate = true;
 }
@@ -656,42 +777,112 @@ function updateRain(dt){
   if(!rainActive) return;
   var pos = rainGeo.attributes.position;
   var arr = pos.array;
+  var drift = precipLen<0.5 ? Math.sin(performance.now()*0.0006)*2*dt : 0; // انجراف جانبي خفيف لرقاقات الثلج
   for(var i=0;i<RAIN_COUNT;i++){
     var t=i*6, b=t+3;
-    var newTopY = arr[t+1] - RAIN_SPEED*dt;
-    var newBotY = arr[b+1] - RAIN_SPEED*dt;
+    var newTopY = arr[t+1] - precipSpeed*dt;
+    var newBotY = arr[b+1] - precipSpeed*dt;
     if(newBotY < -2){
       var rx = player.x + (Math.random()-0.5)*90, rz=(Math.random()-0.5)*50;
-      newTopY = 30+Math.random()*15; newBotY = newTopY-0.9;
-      arr[t]=rx; arr[b]=rx; arr[t+2]=rz; arr[b+2]=rz;
+      newTopY = 30+Math.random()*15; newBotY = newTopY-precipLen;
+      arr[t]=rx; arr[b]=rx+(precipLen<0.5?0.08:0); arr[t+2]=rz; arr[b+2]=rz;
     }
+    arr[t]+=drift; arr[b]+=drift;
     arr[t+1]=newTopY; arr[b+1]=newBotY;
   }
   pos.needsUpdate = true;
 }
 
-// كل مرحلة ثالثة عاصفة ممطرة (3، 6، 9…) لتنويع الأجواء وتقليل مدى الرؤية بدل الاعتماد فقط على كثرة
-// الأعداء لرفع الصعوبة — تبدّل السماء والضباب والإضاءة وتُفعّل المطر بصرياً وصوتياً، وتعود للطقس الصحراوي
-// الصافي بباقي المراحل
-function isRainStage(s){ return s>=3 && s%3===0; }
-var weatherIsRain = false;
-function applyWeatherForStage(s){
-  var rain = isRainStage(s);
-  if(rain === weatherIsRain) return;
-  weatherIsRain = rain;
-  if(rain){
-    scene.background = stormSkyTex;
-    scene.fog.color.setHex(0x4a545c); scene.fog.near = 35; scene.fog.far = 150;
-    sun.intensity = 0.65; sun.color.setHex(0xaebccc);
+/* ------------------------------------------------------------------ *
+ *  عوالم الحملة (الخرائط) — 5 جبهات مختلفة الأجواء تماماً، تُفتح بالتتابع.
+ *  كل عالم يبدّل: السماء، الضباب، الشمس والإضاءة، نسيج الأرض، ألوان الصخور
+ *  والشجيرات وضباب الأفق، والطقس (مطر/ثلج/جمر/ليل بكشاف أمامي).
+ * ------------------------------------------------------------------ */
+var WORLDS = [
+  { name:'صحراء الغروب', icon:'🏜', desc:'كثبان رملية دافئة تحت سماء الغروب — هنا تبدأ الحملة لصدّ طلائع الغزو.',
+    sky:[[0,'#2a3d63'],[0.45,'#7d6f84'],[0.72,'#e08a4e'],[1,'#f4c67a']], starsSky:false,
+    fog:0xc9a56a, fogNear:60, fogFar:240, sun:0xffe6bd, sunInt:1.35,
+    amb:0x88663f, ambInt:0.75, hemiInt:0.5, haze:0xb8935f,
+    ground:{ base:'#caa76a', blotA:'rgba(150,118,70,0.18)', blotB:'rgba(230,196,140,0.18)', grainA:'rgba(90,70,40,0.10)', grainB:'rgba(255,240,210,0.10)' },
+    rock:0x8a7458, bush:0x5a4a2e, weather:null },
+  { name:'جبهة العاصفة', icon:'⛈', desc:'سهول موحلة تحت أمطار غزيرة — رؤية منخفضة وضباب كثيف يخفي كمائن العدو.',
+    sky:[[0,'#1c232b'],[0.45,'#3a4550'],[0.75,'#57636b'],[1,'#6b7680']], starsSky:false,
+    fog:0x4a545c, fogNear:35, fogFar:150, sun:0xaebccc, sunInt:0.65,
+    amb:0x5a6470, ambInt:0.6, hemiInt:0.3, haze:0x59636c,
+    ground:{ base:'#8d7f60', blotA:'rgba(90,80,55,0.22)', blotB:'rgba(150,140,105,0.16)', grainA:'rgba(50,45,30,0.12)', grainB:'rgba(190,180,150,0.08)' },
+    rock:0x6e6255, bush:0x46412c, weather:'rain' },
+  { name:'عمليات منتصف الليل', icon:'🌙', desc:'توغّل ليلي خلف خطوط العدو تحت ضوء القمر — كشافك الأمامي هو دليلك الوحيد.',
+    sky:[[0,'#04060f'],[0.5,'#0a1226'],[0.8,'#152342'],[1,'#22345c']], starsSky:true,
+    fog:0x1a2334, fogNear:38, fogFar:165, sun:0x8fa8d8, sunInt:0.42,
+    amb:0x2a3a5a, ambInt:0.5, hemiInt:0.18, haze:0x1e2c47,
+    ground:{ base:'#77694e', blotA:'rgba(70,60,42,0.22)', blotB:'rgba(140,125,95,0.14)', grainA:'rgba(40,35,25,0.12)', grainB:'rgba(180,170,140,0.07)' },
+    rock:0x5c5244, bush:0x3a3524, weather:'night' },
+  { name:'الجبهة المتجمدة', icon:'❄', desc:'براري متجمدة يلفّها الثلج المتساقط — المعدن يتجمد والمحركات تئن من الصقيع.',
+    sky:[[0,'#5a708c'],[0.45,'#8ea3ba'],[0.75,'#c3cfdc'],[1,'#e8eef4']], starsSky:false,
+    fog:0xcfd8e2, fogNear:48, fogFar:190, sun:0xeaf2ff, sunInt:1.05,
+    amb:0x9aa8bc, ambInt:0.7, hemiInt:0.45, haze:0xb9c6d4,
+    ground:{ base:'#e3e9f0', blotA:'rgba(160,175,195,0.20)', blotB:'rgba(255,255,255,0.22)', grainA:'rgba(120,135,155,0.10)', grainB:'rgba(255,255,255,0.14)' },
+    rock:0x9aa4b0, bush:0x6e7a86, weather:'snow' },
+  { name:'أرض البركان', icon:'🌋', desc:'المعقل الأخير: أرض بازلتية محترقة يتطاير فيها الجمر — هنا يتحصّن قائد الغزو.',
+    sky:[[0,'#1a0c0a'],[0.45,'#42150e'],[0.75,'#7a2a12'],[1,'#b3541e']], starsSky:false,
+    fog:0x3a2018, fogNear:42, fogFar:170, sun:0xff9a55, sunInt:0.9,
+    amb:0x6b3020, ambInt:0.7, hemiInt:0.25, haze:0x552515,
+    ground:{ base:'#4a3f38', blotA:'rgba(25,18,14,0.28)', blotB:'rgba(120,70,45,0.16)', grainA:'rgba(0,0,0,0.14)', grainB:'rgba(255,120,60,0.06)' },
+    rock:0x3a322e, bush:0x2e2620, weather:'ember' }
+];
+var STAGES_PER_WORLD = 5;
+
+// أنماط المهام داخل كل عالم — تتنوع تركيبة الأعداء والقصة القصيرة (Briefing) بدل تكرار نفس الموجة
+var STAGE_TYPES = [
+  { name:'دورية استطلاع', brief:'دورية معادية خفيفة ترصد مواقعنا — دمّرها قبل أن تبلّغ قيادتها.', heli:0, heavy:0.2, countMul:0.8, bossMul:0.8, bossScale:1.45 },
+  { name:'الرتل المدرّع', brief:'رتل دبابات ثقيلة يتقدّم نحو خطوطنا. دروعها سميكة — صوّب بدقة واستعمل الخارقة بحكمة.', heli:0.06, heavy:0.6, countMul:1.0, bossMul:0.9, bossScale:1.45 },
+  { name:'غارة جوية', brief:'مروحيات هجومية تقترب من قطاعنا! احمِ عجلة الدفاع الجوي وراقب السماء.', heli:0.55, heavy:0.15, countMul:1.0, bossMul:0.9, bossScale:1.45 },
+  { name:'الهجوم المضاد', brief:'العدو يشنّ هجوماً شاملاً من البر والجو — اصمد ودمّرهم جميعاً.', heli:0.3, heavy:0.4, countMul:1.3, bossMul:1.0, bossScale:1.45 },
+  { name:'معقل القائد', brief:'وصلنا إلى معقل قائد الجبهة. اخترق دفاعاته وأسقطه لتحرير القطاع بأكمله.', heli:0.2, heavy:0.4, countMul:0.9, bossMul:1.7, bossScale:1.62 }
+];
+
+var curWorld = 0, curStage = 0;      // الجبهة والمرحلة الحاليتان (0-based)
+function levelNum(){ return curWorld*STAGES_PER_WORLD + curStage + 1; } // مستوى الصعوبة العام 1..25
+function curType(){ return STAGE_TYPES[curStage]; }
+
+var weatherKind = null;
+var worldGroundTexCache = {};
+function applyWorldTheme(w){
+  var world = WORLDS[w];
+  // سماء + ضباب + إضاءة
+  if(!world._skyTex) world._skyTex = makeSkyGradientTexture(world.sky, world.starsSky);
+  scene.background = world._skyTex;
+  scene.fog.color.setHex(world.fog); scene.fog.near = world.fogNear; scene.fog.far = world.fogFar;
+  sun.color.setHex(world.sun); sun.intensity = world.sunInt;
+  ambLight.color.setHex(world.amb); ambLight.intensity = world.ambInt;
+  hemi.intensity = world.hemiInt;
+  hazeMat.color.setHex(world.haze);
+  // نسيج الأرض + ألوان العناصر المتناثرة
+  if(!worldGroundTexCache[w]) worldGroundTexCache[w] = makeSandTexture(world.ground);
+  if(groundMat.map !== worldGroundTexCache[w]){ groundMat.map = worldGroundTexCache[w]; groundMat.needsUpdate = true; }
+  rockMat.color.setHex(world.rock);
+  bushMat.color.setHex(world.bush);
+  // كشاف الليل الأمامي
+  headLight.intensity = world.weather==='night' ? 2.4 : 0;
+  // الهطول
+  var kind = world.weather;
+  weatherKind = kind;
+  if(kind==='rain' || kind==='snow'){
+    if(kind==='rain'){ precipSpeed = 34; precipLen = 0.9; rainMat.color.setHex(0xbcd4ee); rainMat.opacity = 0.5; }
+    else { precipSpeed = 5.5; precipLen = 0.28; rainMat.color.setHex(0xffffff); rainMat.opacity = 0.85; }
     resetRainAroundPlayer(); rainActive = true; rainLines.visible = true;
-    startRainSound();
+    if(kind==='rain') startRainSound(); else stopRainSound();
   } else {
-    scene.background = normalSkyTex;
-    scene.fog.color.setHex(0xc9a56a); scene.fog.near = 60; scene.fog.far = 240;
-    sun.intensity = 1.35; sun.color.setHex(0xffe6bd);
     rainActive = false; rainLines.visible = false;
     stopRainSound();
   }
+}
+// جمر متطاير في عالم البركان — يُستدعى من حلقة اللعب
+function updateEmbers(){
+  if(weatherKind!=='ember' || Math.random()>0.25) return;
+  var ex = player.x + (Math.random()-0.5)*70, ez = (Math.random()-0.5)*30;
+  spawnParticle(ex, groundHeightAt(ex, ez)+0.3, ez, Math.random()<0.5?0xff6a2a:0xffb046,
+    0.18+Math.random()*0.2, 1.4+Math.random(), (Math.random()-0.5)*1.2, 1.6+Math.random()*2, (Math.random()-0.5)*1.2, true);
 }
 
 // عناصر صحراوية متناثرة (صخور/شجيرات) تتجدّد مع تقدّم اللاعب
@@ -1960,12 +2151,37 @@ var enemies = [];      // {tank, x, hp, maxHp, hpBar, fireCd, speed, dmg, range,
 // عند اشتباك عدة دبابات في نفس اللحظة تقريباً (بدل أن يطلق الجميع بإيقاع سريع متزامن)
 var ENEMY_FIRE_GAP_MS = 260;
 var lastEnemyFireTime = -99999;
-var state = 'menu';    // menu | playing | transition | over | victory
-var stage = 1;
+var state = 'menu';    // menu | map | playing | paused | continue | transition | over | victory
 var score = 0, coins = 0;
 var enemiesToSpawn = 0, spawnTimer = 0, bossSpawned = false, stageClearing = false;
 
-// مستويات التطوير
+/* ------- حفظ التقدّم (الحملة + العملات + التطويرات) في localStorage ------- */
+// التقدّم دائم بين الجلسات: النجوم تفتح المراحل والجبهات بالتتابع، والعملات والتطويرات لا تضيع بالهزيمة —
+// روح ألعاب المغامرات: كل محاولة تتركك أقوى من سابقتها
+var SAVE_KEY = 'tankAssaultSave_v1';
+var saveData = (function(){
+  try{
+    var s = JSON.parse(localStorage.getItem(SAVE_KEY));
+    if(s && typeof s==='object') return { stars:s.stars||{}, coins:s.coins|0, best:s.best|0, upg:s.upg||{} };
+  }catch(e){}
+  return { stars:{}, coins:0, best:0, upg:{} };
+})();
+function persistSave(){
+  saveData.coins = coins;
+  saveData.best = Math.max(saveData.best, score);
+  Object.keys(upgrades).forEach(function(k){ saveData.upg[k] = upgrades[k].lvl; });
+  try{ localStorage.setItem(SAVE_KEY, JSON.stringify(saveData)); }catch(e){}
+}
+function stageKey(w,s){ return w+'_'+s; }
+function getStars(w,s){ return saveData.stars[stageKey(w,s)]|0; }
+function isStageUnlocked(w,s){
+  if(w===0 && s===0) return true;
+  return s>0 ? getStars(w,s-1)>0 : getStars(w-1, STAGES_PER_WORLD-1)>0;
+}
+function isWorldUnlocked(w){ return w===0 || getStars(w-1, STAGES_PER_WORLD-1)>0; }
+function totalStars(){ var t=0; Object.keys(saveData.stars).forEach(function(k){ t+=saveData.stars[k]; }); return t; }
+
+// مستويات التطوير (تُحفظ وتُستعاد بين الجلسات)
 var upgrades = {
   damage: { name:'قوة المدفع', lvl:0, base:120, apply:function(){ player.dmg = 22 + upgrades.damage.lvl*8; } },
   health: { name:'الدرع والصحة', lvl:0, base:120, apply:function(){ player.maxHp = 100 + upgrades.health.lvl*30; } },
@@ -1974,13 +2190,17 @@ var upgrades = {
 };
 function applyUpgrades(){ upgrades.damage.apply(); upgrades.health.apply(); upgrades.speed.apply(); upgrades.reload.apply(); }
 function upgradeCost(u){ return Math.round(u.base * Math.pow(1.6, u.lvl)); }
+// استعادة المحفوظ عند الإقلاع
+coins = saveData.coins;
+Object.keys(upgrades).forEach(function(k){ upgrades[k].lvl = saveData.upg[k]|0; });
 
 function spawnEnemy(isBoss){
-  if(!isBoss && stage>=2 && Math.random()<0.25){ spawnHelicopter(); return; }
+  var L = levelNum(), type = curType();
+  if(!isBoss && Math.random() < type.heli){ spawnHelicopter(); return; }
 
   var opts = isBoss
-    ? { body:0x8a1f1f, turret:0x5a1212, scale:1.45 }
-    : (Math.random()<0.35 ? { body:0x6d4a3a, turret:0x3a251c, scale:1.25 } : { body:0x8a3a34, turret:0x4a1c18, scale:1.0 });
+    ? { body:0x8a1f1f, turret:0x5a1212, scale:type.bossScale }
+    : (Math.random()<type.heavy ? { body:0x6d4a3a, turret:0x3a251c, scale:1.25 } : { body:0x8a3a34, turret:0x4a1c18, scale:1.0 });
   // كل الأعداء (بما فيها الزعيم) يستخدمون نفس نموذج الدبابة الحقيقي — بحجم مختلف للزعيم/الثقيل بدل هيكل إجرائي مغاير الشكل
   var tank = makeEnemyTank(opts);
   var ex = player.x + 55 + Math.random()*30;
@@ -1988,9 +2208,9 @@ function spawnEnemy(isBoss){
   scene.add(tank);
   var hpBar = makeHealthBar(); scene.add(hpBar);
   var heavy = opts.scale>1.1 && !isBoss;
+  var hp = isBoss ? Math.round((300+L*36)*type.bossMul) : (heavy?(60+L*10):(30+L*6));
   enemies.push({
-    tank:tank, x:ex, vx:0, hp: isBoss?(320+stage*40):(heavy?(60+stage*10):(30+stage*6)),
-    maxHp: isBoss?(320+stage*40):(heavy?(60+stage*10):(30+stage*6)),
+    tank:tank, x:ex, vx:0, hp:hp, maxHp:hp,
     hpBar:hpBar, fireCd:1+Math.random()*1.5,
     speed: isBoss?4:(heavy?4:7), dmg: isBoss?18:(heavy?14:8),
     range: isBoss?42:34, isBoss:!!isBoss, isHeli:false, scale:opts.scale,
@@ -2000,6 +2220,7 @@ function spawnEnemy(isBoss){
 }
 
 function spawnHelicopter(){
+  var L = levelNum();
   var tank = makeHeliTank();
   var ex = player.x + 55 + Math.random()*30;
   var hoverY = 9 + Math.random()*3;
@@ -2008,7 +2229,7 @@ function spawnHelicopter(){
   scene.add(tank);
   var hpBar = makeHealthBar(); scene.add(hpBar);
   enemies.push({
-    tank:tank, x:ex, hp:34+stage*5, maxHp:34+stage*5, hpBar:hpBar, fireCd:1+Math.random(),
+    tank:tank, x:ex, hp:34+L*5, maxHp:34+L*5, hpBar:hpBar, fireCd:1+Math.random(),
     speed:5, dmg:10, isBoss:false, isHeli:true, scale:1, hoverY:hoverY, phase:Math.random()*10,
     armor:0, enraged:false, fireCdMultiplier:1, facingDir:-1, engineAudio:startHeliEngineSound(),
     scoreValue:30, coinValue:7, hpBarYOffset:1.4
@@ -2016,11 +2237,13 @@ function spawnHelicopter(){
 }
 
 function startStage(){
-  // تنظيف الأعداء والقذائف
+  var L = levelNum(), type = curType();
+  // تنظيف الأعداء والقذائف وصناديق الإمداد
   enemies.forEach(function(e){ scene.remove(e.tank); scene.remove(e.hpBar); if(e.engineAudio) stopHeliEngineSound(e.engineAudio); });
   enemies = [];
   projectiles.forEach(function(p){ scene.remove(p.mesh); }); projectiles = [];
   samMissiles.forEach(function(m){ scene.remove(m.mesh); }); samMissiles = [];
+  clearPickups();
   // عجلة الدفاع الجوي تُشفى مع بداية كل مرحلة كاللاعب تماماً، أو تُستعاد إن كانت قد دُمّرت في المرحلة السابقة،
   // وتُعاد لموضع قريب من نقطة انطلاق اللاعب الجديدة (x=0 أدناه) بدل تركها بعيدة في موضع المرحلة السابقة
   if(samVehicle){
@@ -2030,18 +2253,88 @@ function startStage(){
     samVehicle.tank.position.set(samVehicle.x, groundHeightAt(samVehicle.x), 0);
   } else spawnSamVehicle();
   bossSpawned = false; stageClearing = false;
-  // المرحلة الأولى سهلة عمداً (عددان فقط قبل الزعيم) للتعرّف على أسلوب اللعب، ثم تصاعد تدريجي أهدأ من السابق —
-  // التحدي الإضافي بالمراحل المتقدمة يأتي أساساً من صحة الأعداء ووتيرة ظهورهم والعوائق/الطقس، لا من الكثرة العددية وحدها
-  enemiesToSpawn = Math.max(2, Math.round(1 + stage*1.3));
+  // عدد الأعداء يتدرّج مع مستوى الصعوبة العام (1..25) ومضاعف نمط المهمة، بسقف يمنع الحشو المفرط —
+  // التحدي بالمراحل المتقدمة يأتي أيضاً من صحة الأعداء والطقس والتضاريس، لا من الكثرة العددية وحدها
+  enemiesToSpawn = Math.min(13, Math.max(2, Math.round((2 + L*0.55) * type.countMul)));
   spawnTimer = 1;
   player.x = 0; player.hp = player.maxHp; player.fuel = player.maxFuel; player.vy=0; player.onGround=true;
-  applyWeatherForStage(stage);
+  applyWorldTheme(curWorld);
   player.ammo = player.maxAmmo; player.reloading = false; player.reloadTimer = 0;
   player.specialUsed = false;
   document.getElementById('btnSpecial').classList.remove('used');
-  document.getElementById('stageNum').textContent = stage;
-  showBanner('المرحلة ' + stage);
+  document.getElementById('stageNum').textContent = (curStage+1);
+  document.getElementById('worldPill').textContent = WORLDS[curWorld].icon;
+  showBanner(WORLDS[curWorld].name + ' — ' + type.name, type.brief);
   updateHUD();
+}
+
+/* ------- صناديق الإمداد (Pickups): تسقط من الأعداء المدمَّرين وتُلتقط بالمرور عليها ------- */
+// لمسة مغامرات حقيقية: الميدان يمنحك موارد أثناء المعركة (صحة/ذخيرة/عملات) بدل انتظار نهاية المرحلة
+var pickups = []; // {mesh, x, z, kind, life, baseY}
+var PICKUP_DEFS = {
+  health: { color:0x4fd464, emissive:0x1d8a30, label:'+ صحة',  weight:0.35 },
+  ammo:   { color:0xffd24a, emissive:0xa8720f, label:'+ ذخيرة', weight:0.25 },
+  coin:   { color:0xffe27a, emissive:0xc9a227, label:'◆',       weight:0.40 }
+};
+var pickupGeo = new THREE.BoxGeometry(0.9, 0.9, 0.9);
+function spawnPickup(x, z, kind){
+  var def = PICKUP_DEFS[kind];
+  var mat = new THREE.MeshStandardMaterial({ color:def.color, emissive:def.emissive, emissiveIntensity:0.7, roughness:0.4, metalness:0.3 });
+  var m = new THREE.Mesh(pickupGeo, mat);
+  var baseY = groundHeightAt(x, z) + 0.9;
+  m.position.set(x, baseY, z);
+  m.castShadow = true;
+  scene.add(m);
+  pickups.push({ mesh:m, x:x, z:z, kind:kind, life:16, baseY:baseY });
+}
+function rollPickupKind(){
+  var r = Math.random(), acc = 0, keys = Object.keys(PICKUP_DEFS);
+  for(var i=0;i<keys.length;i++){ acc += PICKUP_DEFS[keys[i]].weight; if(r<=acc) return keys[i]; }
+  return 'coin';
+}
+function clearPickups(){
+  pickups.forEach(function(p){ scene.remove(p.mesh); p.mesh.material.dispose(); });
+  pickups = [];
+}
+function collectPickup(p){
+  var L = levelNum();
+  if(p.kind==='health'){
+    var heal = Math.round(player.maxHp*0.3);
+    player.hp = Math.min(player.maxHp, player.hp + heal);
+    spawnDamageText(p.x, p.baseY+1.6, p.z, '+'+heal, '#6adf6a');
+    playSound('reloadDone');
+  } else if(p.kind==='ammo'){
+    player.ammo = player.maxAmmo; player.reloading = false; player.reloadTimer = 0;
+    spawnDamageText(p.x, p.baseY+1.6, p.z, PICKUP_DEFS.ammo.label, '#ffd24a');
+    playSound('reloadDone');
+  } else {
+    var c = 6 + Math.round(L*0.8);
+    coins += c;
+    spawnDamageText(p.x, p.baseY+1.6, p.z, '◆ +'+c, '#ffe27a');
+    playSound('click');
+  }
+  for(var i=0;i<7;i++){
+    var a = Math.random()*Math.PI*2;
+    spawnParticle(p.x, p.baseY, p.z, PICKUP_DEFS[p.kind].color, 0.3+Math.random()*0.2, 0.35,
+      Math.cos(a)*3, 2+Math.random()*2, Math.sin(a)*3, true);
+  }
+  updateHUD();
+}
+function updatePickups(dt){
+  for(var i=pickups.length-1;i>=0;i--){
+    var p = pickups[i];
+    p.life -= dt;
+    p.mesh.rotation.y += dt*2.2;
+    p.mesh.position.y = p.baseY + Math.sin(performance.now()*0.003 + p.x)*0.2;
+    // وميض تحذيري قبيل الاختفاء
+    p.mesh.visible = p.life > 4 || ((p.life*6|0) % 2 === 0);
+    var collected = Math.abs(p.x - player.x) < 2.6 && player.tank.position.y - p.baseY < 2.5;
+    if(collected) collectPickup(p);
+    if(collected || p.life<=0){
+      scene.remove(p.mesh); p.mesh.material.dispose();
+      pickups.splice(i,1);
+    }
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -2222,6 +2515,7 @@ window.addEventListener('keydown', function(e){
   if(e.code==='ArrowDown') keys.down=true;
   if(e.code==='Space'){ keys.fire=true; e.preventDefault(); }
   if(e.code==='KeyS') keys.jump=true;
+  if(e.code==='KeyP'){ if(state==='playing') pauseGame(); else if(state==='paused') resumeGame(); }
 });
 window.addEventListener('keyup', function(e){
   if(e.code==='ArrowLeft') keys.left=false;
@@ -2310,6 +2604,8 @@ function updatePlayer(dt){
   player.tank.position.set(player.x, py, 0);
   // الدبابة تستدير لتواجه اتجاه حركتها الفعلي (يمين أو يسار)، بدل البقاء ثابتة الاتجاه دائماً
   player.tank.rotation.y = player.dir >= 0 ? 0 : Math.PI;
+  // كشاف الليل الأمامي يتبع مقدمة الدبابة (شدّته صفر خارج عالم عمليات الليل)
+  if(headLight.intensity > 0) headLight.position.set(player.x + player.dir*5, py + 2.2, 1.5);
 
   // زاوية المدفع (الارتفاع/الانخفاض). عند الاستدارة يسارًا 180° حول Y، دوران الماسورة المحلي حول Z
   // يبقى دون عكس إشارة — الدوران الأصلي للهيكل الأب هو ما يعكس المحور السيني تلقائياً، فتبقى "لأعلى" لأعلى فعلياً
@@ -2387,6 +2683,12 @@ function updateGroundEnemy(e, dt){
   var accel = e.speed * (targetVx === 0 ? 3.2 : 2.4);
   e.vx += Math.max(-accel*dt, Math.min(accel*dt, targetVx - e.vx));
   e.x += e.vx*dt;
+  // السواتر تصدّ دبابات العدو أيضاً (كانت تخترقها بصرياً) — يتمركز العدو خلف الساتر كغطاء حقيقي
+  var eBlock = coverBlockingAt(e.x, gy+0.6, 0, 1.1*e.scale);
+  if(eBlock){
+    e.x = e.x < eBlock.x ? (eBlock.x - eBlock.halfWidth - 1.1*e.scale) : (eBlock.x + eBlock.halfWidth + 1.1*e.scale);
+    e.vx = 0;
+  }
   e.tank.position.set(e.x, gy, 0);
 
   // تفعيل غضب الزعيم عند انخفاض صحته (سرعة إطلاق أعلى + توهّج تحذيري)
@@ -2481,6 +2783,13 @@ function updateEnemies(dt){
       camShake = Math.max(camShake, e.isBoss?1.0:0.5);
       score += e.scoreValue;
       coins += e.coinValue;
+      // إسقاط صناديق الإمداد: الزعيم يسقط صندوق صحة مضموناً + عملات، وبقية الأعداء باحتمال 30%
+      if(e.isBoss){
+        spawnPickup(e.x - 2, 0, 'health');
+        spawnPickup(e.x + 2, 0, 'coin');
+      } else if(Math.random() < 0.3){
+        spawnPickup(e.x, 0, rollPickupKind());
+      }
       scene.remove(e.tank); scene.remove(e.hpBar);
       if(e.engineAudio) stopHeliEngineSound(e.engineAudio);
       enemies.splice(i,1);
@@ -2493,7 +2802,7 @@ function updateEnemies(dt){
     if(enemiesToSpawn>0){
       spawnTimer -= dt;
       if(spawnTimer<=0 && enemies.length < 4){
-        spawnEnemy(false); enemiesToSpawn--; spawnTimer = Math.max(0.8, 2.2 - stage*0.1);
+        spawnEnemy(false); enemiesToSpawn--; spawnTimer = Math.max(0.8, 2.2 - levelNum()*0.05);
       }
     } else if(!bossSpawned && enemies.length===0){
       bossSpawned = true; spawnEnemy(true);
@@ -2652,7 +2961,18 @@ function updateHUD(){
 }
 function flashDamage(){ dmgFlash.style.opacity='1'; setTimeout(function(){ dmgFlash.style.opacity='0'; }, 90); }
 function showHitMarker(){ reticleEl.classList.add('hit'); clearTimeout(showHitMarker._t); showHitMarker._t=setTimeout(function(){ reticleEl.classList.remove('hit'); }, 140); }
-function showBanner(text){ stageBannerEl.textContent=text; stageBannerEl.classList.add('show'); clearTimeout(showBanner._t); showBanner._t=setTimeout(function(){ stageBannerEl.classList.remove('show'); }, 1400); }
+// اللافتة تدعم سطراً ثانياً اختيارياً (موجز المهمة/Briefing) — يبقى ظاهراً أطول قليلاً ليُقرأ
+function showBanner(text, sub){
+  stageBannerEl.textContent = text;
+  if(sub){
+    var subEl = document.createElement('div');
+    subEl.className = 'banner-sub'; subEl.textContent = sub;
+    stageBannerEl.appendChild(subEl);
+  }
+  stageBannerEl.classList.add('show');
+  clearTimeout(showBanner._t);
+  showBanner._t = setTimeout(function(){ stageBannerEl.classList.remove('show'); }, sub ? 3000 : 1400);
+}
 
 // متجهات مُعاد استخدامها لتفادي تخصيص Vector3 جديد كل إطار
 var _reticleOrigin = new THREE.Vector3();
@@ -2733,6 +3053,7 @@ function resolveContinue(healFraction, coinCostPaid){
   hide('continueScreen');
   if(coinCostPaid){
     coins -= coinCostPaid; continuesUsedThisRun++; player.hp = player.maxHp;
+    persistSave(); // الشراء بالعملات يُحفظ فوراً كي لا يسترجعها اللاعب بإعادة تحميل الصفحة
   } else {
     player.hp = Math.min(player.maxHp, player.hp + player.maxHp*healFraction);
   }
@@ -2784,8 +3105,9 @@ document.getElementById('continueSkipBtn').addEventListener('click', function(){
 
 function onGameOver(){
   state='over';
+  persistSave(); // العملات والتطويرات لا تضيع بالهزيمة — تُحفظ فوراً
   document.getElementById('goScore').textContent=score;
-  document.getElementById('goStage').textContent=stage;
+  document.getElementById('goStage').textContent = WORLDS[curWorld].icon+' '+WORLDS[curWorld].name+' · المرحلة '+(curStage+1);
   show('gameOverScreen');
 }
 function triggerStageClear(){
@@ -2794,10 +3116,31 @@ function triggerStageClear(){
   showBanner('تطهير المرحلة!');
   setTimeout(function(){ stageClearing=false; onVictory(); }, 1400);
 }
+function starsMarkup(n, cls){
+  var s='';
+  for(var i=0;i<3;i++) s += '<span class="'+(i<n?(cls||'on'):'off')+'">★</span>';
+  return s;
+}
 function onVictory(){
   state='victory';
+  // النجوم تُمنح حسب الصحة المتبقية عند النصر (3 ≥ 70% · 2 ≥ 30% · 1 دونها) وتُحفظ أفضل نتيجة
+  var frac = player.hp/player.maxHp;
+  var earned = frac>=0.7 ? 3 : (frac>=0.3 ? 2 : 1);
+  var key = stageKey(curWorld, curStage);
+  if(earned > (saveData.stars[key]|0)) saveData.stars[key] = earned;
+  persistSave();
+  var lastStageOfWorld = curStage===STAGES_PER_WORLD-1;
+  var lastOfCampaign = lastStageOfWorld && curWorld===WORLDS.length-1;
+  document.getElementById('vicTitle').textContent =
+    lastOfCampaign ? '🏆 اكتملت الحملة!' :
+    lastStageOfWorld ? 'تحرّرت '+WORLDS[curWorld].name+'!' : 'تمّ تطهير المرحلة';
+  document.getElementById('vicStars').innerHTML = starsMarkup(earned);
   document.getElementById('vicScore').textContent=score;
   document.getElementById('vicCoins').textContent=coins;
+  var nextBtn = document.getElementById('nextStageBtn');
+  nextBtn.style.display = lastOfCampaign ? 'none' : '';
+  nextBtn.textContent = lastStageOfWorld && !lastOfCampaign
+    ? WORLDS[curWorld+1].icon+' الجبهة التالية ▶' : 'المهمة التالية ▶';
   renderUpgrades();
   show('victoryScreen');
 }
@@ -2811,26 +3154,118 @@ function renderUpgrades(){
     row.innerHTML = '<div><div class="u-name">'+u.name+'</div><div class="u-lvl">المستوى '+u.lvl+'</div></div><div class="u-cost">◆ '+cost+'</div>';
     row.addEventListener('click', function(){
       var c = upgradeCost(u);
-      if(coins>=c){ coins-=c; u.lvl++; applyUpgrades(); playSound('click'); if(key==='health') player.hp=player.maxHp; renderUpgrades(); updateHUD(); }
+      if(coins>=c){ coins-=c; u.lvl++; applyUpgrades(); playSound('click'); if(key==='health') player.hp=player.maxHp; persistSave(); renderUpgrades(); updateHUD(); }
     });
     list.appendChild(row);
   });
 }
 
+/* ------- خريطة الحملة: عرض الجبهات والمراحل، القفل والفتح، واختيار المهمة ------- */
+var mapSelWorld = 0, mapSelStage = 0;
+// نقطة التقدّم الحالية: أول مرحلة مفتوحة لم تُنجَز بعد (أو آخر مرحلة إن اكتملت الحملة كلها)
+function progressPoint(){
+  for(var w=0; w<WORLDS.length; w++)
+    for(var s=0; s<STAGES_PER_WORLD; s++)
+      if(isStageUnlocked(w,s) && getStars(w,s)===0) return { w:w, s:s };
+  return { w:WORLDS.length-1, s:STAGES_PER_WORLD-1 };
+}
+function firstPlayableStage(w){
+  for(var s=0; s<STAGES_PER_WORLD; s++)
+    if(isStageUnlocked(w,s) && getStars(w,s)===0) return s;
+  return 0;
+}
+function renderMap(){
+  var tabs = document.getElementById('worldTabs'); tabs.innerHTML='';
+  WORLDS.forEach(function(w, i){
+    var unlocked = isWorldUnlocked(i);
+    var el = document.createElement('div');
+    el.className = 'world-tab'+(i===mapSelWorld?' active':'')+(unlocked?'':' locked');
+    el.innerHTML = '<div class="wt-icon">'+w.icon+'</div><div>'+w.name+'</div>'+(unlocked?'':'<div class="wt-lock">🔒</div>');
+    if(unlocked) el.addEventListener('click', function(){ mapSelWorld=i; mapSelStage=firstPlayableStage(i); playSound('click'); renderMap(); });
+    tabs.appendChild(el);
+  });
+  document.getElementById('worldDesc').textContent = WORLDS[mapSelWorld].desc;
+  var row = document.getElementById('stageRow'); row.innerHTML='';
+  for(var s=0; s<STAGES_PER_WORLD; s++){
+    (function(s){
+      var unlocked = isStageUnlocked(mapSelWorld, s);
+      var el = document.createElement('div');
+      el.className = 'stage-btn'+(s===mapSelStage?' active':'')+(unlocked?'':' locked');
+      el.innerHTML = '<div>'+(unlocked?(s+1):'🔒')+'</div><div class="st-stars">'+starsMarkup(getStars(mapSelWorld,s), '')+'</div>';
+      if(unlocked) el.addEventListener('click', function(){ mapSelStage=s; playSound('click'); renderMap(); });
+      row.appendChild(el);
+    })(s);
+  }
+  document.getElementById('mapBrief').innerHTML = '<b>'+STAGE_TYPES[mapSelStage].name+':</b> '+STAGE_TYPES[mapSelStage].brief;
+  document.getElementById('mapTotals').textContent =
+    '★ '+totalStars()+' / '+(WORLDS.length*STAGES_PER_WORLD*3)+' · أفضل نتيجة: '+saveData.best+' · رصيدك ◆ '+coins;
+}
+function openMap(){
+  ['startScreen','victoryScreen','gameOverScreen','pauseScreen','continueScreen'].forEach(hide);
+  state = 'map';
+  // إسكات ساحة المعركة خلف الخريطة: حلقات محرك المروحيات وصوت محرك اللاعب لا تستمر بالخلفية
+  enemies.forEach(function(e){ if(e.engineAudio){ stopHeliEngineSound(e.engineAudio); e.engineAudio = null; } });
+  if(engineGain) engineGain.gain.value = 0;
+  var p = progressPoint();
+  mapSelWorld = p.w; mapSelStage = p.s;
+  renderMap();
+  show('mapScreen');
+}
+function launchStage(){
+  hide('mapScreen'); hide('victoryScreen'); hide('gameOverScreen'); hide('pauseScreen');
+  enterImmersiveMode();
+  applyUpgrades();
+  startStage();
+  state = 'playing';
+}
+document.getElementById('playStageBtn').addEventListener('click', function(){
+  playSound('click');
+  curWorld = mapSelWorld; curStage = mapSelStage;
+  score = 0; continuesUsedThisRun = 0;
+  launchStage();
+});
+
+/* ------- الإيقاف المؤقت ------- */
+function pauseGame(){
+  if(state!=='playing') return;
+  state = 'paused';
+  document.getElementById('pauseInfo').innerHTML =
+    WORLDS[curWorld].icon+' '+WORLDS[curWorld].name+' · المرحلة <b>'+(curStage+1)+'</b> · النتيجة <b>'+score+'</b>';
+  show('pauseScreen');
+}
+function resumeGame(){
+  if(state!=='paused') return;
+  hide('pauseScreen');
+  state = 'playing';
+}
+document.getElementById('pauseBtn').addEventListener('click', function(){ playSound('click'); pauseGame(); });
+document.getElementById('resumeBtn').addEventListener('click', function(){ playSound('click'); resumeGame(); });
+document.getElementById('pauseRestartBtn').addEventListener('click', function(){
+  playSound('click'); hide('pauseScreen'); score=0; startStage(); state='playing';
+});
+document.getElementById('pauseMapBtn').addEventListener('click', function(){ playSound('click'); persistSave(); openMap(); });
+// الإيقاف التلقائي عند مغادرة التبويب/التطبيق أثناء اللعب — لا تُفاجأ بدبابتك مدمَّرة عند العودة
+document.addEventListener('visibilitychange', function(){ if(document.hidden) pauseGame(); });
+
 // أزرار الشاشات
 document.getElementById('startBtn').addEventListener('click', function(){
   initAudio(); if(audioCtx && audioCtx.state==='suspended') audioCtx.resume();
   playSound('click');
-  hide('startScreen'); applyUpgrades(); startStage(); state='playing';
+  openMap();
 });
 document.getElementById('retryBtn').addEventListener('click', function(){
-  playSound('click'); hide('gameOverScreen'); enterImmersiveMode();
-  stage=1; score=0; coins=0; continuesUsedThisRun=0;
-  upgrades.damage.lvl=0; upgrades.health.lvl=0; upgrades.speed.lvl=0; upgrades.reload.lvl=0; applyUpgrades();
-  startStage(); state='playing';
+  playSound('click');
+  score = 0; continuesUsedThisRun = 0;
+  launchStage();
 });
+document.getElementById('goMapBtn').addEventListener('click', function(){ playSound('click'); openMap(); });
+document.getElementById('vicMapBtn').addEventListener('click', function(){ playSound('click'); openMap(); });
 document.getElementById('nextStageBtn').addEventListener('click', function(){
-  playSound('click'); hide('victoryScreen'); enterImmersiveMode(); stage++; startStage(); state='playing';
+  playSound('click');
+  if(curStage < STAGES_PER_WORLD-1){ curStage++; }
+  else if(curWorld < WORLDS.length-1){ curWorld++; curStage = 0; }
+  else { openMap(); return; }
+  launchStage();
 });
 document.getElementById('muteBtn').addEventListener('click', function(){
   muted=!muted; this.textContent = muted?'🔇':'🔊';
@@ -2903,10 +3338,11 @@ function resize(){
 }
 window.addEventListener('resize', resize); resize();
 
-// وضع اللاعب مبدئياً + وضع كاميرا مبدئي لعرض القائمة
+// وضع اللاعب مبدئياً + وضع كاميرا مبدئي لعرض القائمة + أجواء العالم الأول خلف شاشة البداية
 player.tank.position.set(0, groundHeightAt(0), 0);
 camera.position.set(CAM_OFFSET.x, CAM_OFFSET.y, CAM_OFFSET.z);
 camera.lookAt(6, 2.5, 0);
+applyWorldTheme(0);
 
 var clock = new THREE.Clock();
 function loop(){
@@ -2919,6 +3355,8 @@ function loop(){
     updateProjectiles(dt);
     updateSamVehicle(dt);
     updateSamMissiles(dt);
+    updatePickups(dt);
+    updateEmbers();
     updateMusic(dt);
     updateHUD();
     updateReticle();
